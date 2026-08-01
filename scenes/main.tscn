@@ -1,0 +1,46 @@
+[gd_scene load_steps=3 format=3 uid="uid://main"]
+
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1"]
+[ext_resource type="Script" path="res://scripts/World/WorldGenerator.cs" id="2"]
+
+[node name="Main" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, -0.433, 0.25, 0, 0.5, 0.866, -0.5, -0.75, 0.433, 0, 100, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="VoxelTerrain" type="VoxelTerrain" parent="."]
+generator = ExtResource("2")
+view_distance = 128
+
+[node name="Lindani" parent="." instance=ExtResource("1")]
+position = Vector3(0, 70, 0)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="PlayerName" type="Label" parent="HUD"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -50
+offset_top = 10
+offset_right = 50
+offset_bottom = 35
+text = "Lindani"
+horizontal_alignment = 1
+
+[node name="Hotbar" type="HBoxContainer" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -160
+offset_top = -60
+offset_right = 160
+offset_bottom = -10

@@ -1,16 +1,19 @@
-# Godot
+# Godot generated
 .godot/
 *.uid
 
-# Mono / C#
+# Mono / C# build output (project root only)
 .mono/
 data_*/
 mono_crash.*.json
-bin/
-obj/
+/bin/
+/obj/
 *.csproj.user
 
-# Android export
+# Voxel Tools native binaries — download via Godot asset library or releases page
+addons/zylann.voxel/bin/
+
+# Android export artifacts
 android/
 *.apk
 *.aab

@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3 uid="uid://player"]
+
+[ext_resource type="Script" path="res://scripts/Player/PlayerController.cs" id="1"]
+[ext_resource type="Script" path="res://scripts/Player/BlockInteraction.cs" id="2"]
+
+[node name="Lindani" type="CharacterBody3D"]
+script = ExtResource("1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = CapsuleShape3D.new()
+
+[node name="CameraArm" type="Node3D" parent="."]
+position = Vector3(0, 1.7, 0)
+
+[node name="Camera3D" type="Camera3D" parent="CameraArm"]
+unique_name_in_owner = true
+
+[node name="NameTag" type="Label3D" parent="."]
+position = Vector3(0, 2.2, 0)
+text = "Lindani"
+font_size = 24
+no_depth_test = true
+billboard = 3
+
+[node name="BlockInteraction" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("2")
