@@ -2,6 +2,7 @@ using Godot;
 
 namespace Mindani.World;
 
+[GlobalClass]
 [Tool]
 public partial class WorldGenerator : VoxelGeneratorScript
 {
