@@ -1,0 +1,20 @@
+# Godot
+.godot/
+*.uid
+
+# Mono / C#
+.mono/
+data_*/
+mono_crash.*.json
+bin/
+obj/
+*.csproj.user
+
+# Android export
+android/
+*.apk
+*.aab
+
+# OS
+.DS_Store
+Thumbs.db
