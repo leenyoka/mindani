@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://main"]
+[gd_scene load_steps=4 format=3 uid="uid://main"]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1"]
 [ext_resource type="Script" path="res://scripts/World/WorldGenerator.cs" id="2"]
+[ext_resource type="Script" path="res://scripts/World/BlockLibrary.cs" id="3"]
 
 [node name="Main" type="Node3D"]
 
@@ -15,6 +16,9 @@ shadow_enabled = true
 [node name="VoxelTerrain" type="VoxelTerrain" parent="."]
 generator = ExtResource("2")
 view_distance = 128
+
+[node name="BlockLibrary" type="Node" parent="VoxelTerrain"]
+script = ExtResource("3")
 
 [node name="Lindani" parent="." instance=ExtResource("1")]
 position = Vector3(0, 70, 0)

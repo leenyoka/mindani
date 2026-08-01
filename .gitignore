@@ -18,6 +18,9 @@ android/
 *.apk
 *.aab
 
+# Visual Studio
+.vs/
+
 # OS
 .DS_Store
 Thumbs.db

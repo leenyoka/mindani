@@ -1,0 +1,58 @@
+[gd_resource type="VoxelBlockyLibrary" load_steps=14 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/blocks/grass_top.png" id="tex_grass_top"]
+[ext_resource type="Texture2D" path="res://assets/blocks/grass_side.png" id="tex_grass_side"]
+[ext_resource type="Texture2D" path="res://assets/blocks/dirt.png" id="tex_dirt"]
+[ext_resource type="Texture2D" path="res://assets/blocks/stone.png" id="tex_stone"]
+[ext_resource type="Texture2D" path="res://assets/blocks/sand.png" id="tex_sand"]
+
+[sub_resource type="StandardMaterial3D" id="mat_grass_top"]
+albedo_texture = ExtResource("tex_grass_top")
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="mat_grass_side"]
+albedo_texture = ExtResource("tex_grass_side")
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="mat_dirt"]
+albedo_texture = ExtResource("tex_dirt")
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="mat_stone"]
+albedo_texture = ExtResource("tex_stone")
+texture_filter = 0
+
+[sub_resource type="StandardMaterial3D" id="mat_sand"]
+albedo_texture = ExtResource("tex_sand")
+texture_filter = 0
+
+[sub_resource type="VoxelBlockyModelEmpty" id="model_air"]
+resource_name = "air"
+
+[sub_resource type="VoxelBlockyModelCube" id="model_grass"]
+resource_name = "grass"
+collision_enabled_0 = true
+material_override_0 = SubResource("mat_grass_top")
+material_override_1 = SubResource("mat_dirt")
+material_override_2 = SubResource("mat_grass_side")
+material_override_3 = SubResource("mat_grass_side")
+material_override_4 = SubResource("mat_grass_side")
+material_override_5 = SubResource("mat_grass_side")
+
+[sub_resource type="VoxelBlockyModelCube" id="model_dirt"]
+resource_name = "dirt"
+collision_enabled_0 = true
+material_override_0 = SubResource("mat_dirt")
+
+[sub_resource type="VoxelBlockyModelCube" id="model_stone"]
+resource_name = "stone"
+collision_enabled_0 = true
+material_override_0 = SubResource("mat_stone")
+
+[sub_resource type="VoxelBlockyModelCube" id="model_sand"]
+resource_name = "sand"
+collision_enabled_0 = true
+material_override_0 = SubResource("mat_sand")
+
+[resource]
+models = Array[VoxelBlockyModel]([SubResource("model_air"), SubResource("model_grass"), SubResource("model_dirt"), SubResource("model_stone"), SubResource("model_sand")])
