@@ -10,8 +10,8 @@ mono_crash.*.json
 /obj/
 *.csproj.user
 
-# Voxel Tools native binaries — download via Godot asset library or releases page
-addons/zylann.voxel/bin/
+# Voxel Tools — using module build (types baked into custom Godot 4.6 editor)
+addons/
 
 # Android export artifacts
 android/
