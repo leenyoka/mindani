@@ -373,7 +373,13 @@ public partial class VoxelWorld : Node3D
         }
 
         _mesh.Mesh = arrayMesh;
-        _colShape.Shape = arrayMesh.CreateTrimeshShape();
+
+        // BackfaceCollision = true means if the player somehow enters a block
+        // face from behind (fast movement, corner cases) it gets pushed back out
+        // instead of tunnelling through.
+        var triShape = arrayMesh.CreateTrimeshShape();
+        triShape.BackfaceCollision = true;
+        _colShape.Shape = triShape;
     }
 
     static int FaceMat(byte block, int dirY) => block switch

@@ -37,7 +37,7 @@ shadow_enabled = true
 script = ExtResource("2")
 
 [node name="Lindani" parent="." instance=ExtResource("1")]
-position = Vector3(32, 30, 32)
+position = Vector3(32, 24, 32)
 
 [node name="Chicken1" parent="." instance=ExtResource("5")]
 position = Vector3(27, 30, 28)

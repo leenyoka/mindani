@@ -17,6 +17,14 @@ public partial class PlayerController : CharacterBody3D
     {
         _camera = GetNode<Camera3D>("CameraArm/Camera3D");
         Input.MouseMode = Input.MouseModeEnum.Captured;
+
+        // Larger snap keeps the player grounded when stepping off 1-block edges.
+        // Without this, IsOnFloor() briefly returns false mid-step and gravity
+        // creates a visible bounce/float on every block transition.
+        FloorSnapLength = 0.5f;
+
+        // Allow slightly steeper slopes (platforms are ~40°; default 45° is close)
+        FloorMaxAngle = Mathf.DegToRad(52f);
     }
 
     public override void _Input(InputEvent e)

@@ -23,7 +23,7 @@ public partial class SpawnSelector : CanvasLayer
         _player = GetNodeOrNull<CharacterBody3D>("/root/Main/Lindani");
 
         // First entry is always home
-        _locs.Add(("Home Base", new Vector3(32, 31, 32)));
+        _locs.Add(("Home Base", new Vector3(32, 24, 32)));
         _locs.AddRange(VoxelWorld.SpawnPoints);
 
         BuildUI();
