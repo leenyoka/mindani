@@ -7,6 +7,9 @@ public partial class CompanionController : CharacterBody3D
     [Export] public string   CompanionName = "Companion";
     [Export] public Color    BodyColor     = Colors.Orange;
     [Export] public string[] Dialogue      = [];
+    [Export] public bool     FemaleVoice   = false;
+    [Export] public float    VoicePitch    = 1.0f;
+    [Export] public float    VoiceRate     = 1.0f;
 
     // ── Tuning ────────────────────────────────────────────────────────────
     const float WalkSpeed   = 2.2f;
@@ -30,6 +33,10 @@ public partial class CompanionController : CharacterBody3D
     // that companions don't react to camera look direction changes.
     Vector3 _lastPlayerMoveDir = Vector3.Forward;
 
+    // TTS voice ID resolved once in _Ready from system voices.
+    string _voiceId     = "";
+    int    _utteranceId = 0;
+
     // ── References ────────────────────────────────────────────────────────
     Label3D          _bubble = null!;
     CharacterBody3D? _player;
@@ -41,6 +48,7 @@ public partial class CompanionController : CharacterBody3D
     public override void _Ready()
     {
         BuildVisuals();
+        ResolveVoice();
 
         _player     = GetNodeOrNull<CharacterBody3D>("/root/Main/Lindani");
         _wanderDir  = RandDir();
@@ -51,6 +59,30 @@ public partial class CompanionController : CharacterBody3D
         FloorMaxAngle   = Mathf.DegToRad(52f);
 
         AddToGroup("companion");
+    }
+
+    void ResolveVoice()
+    {
+        // TtsGetVoices returns Array<Dictionary> where each dict has "id" and "name".
+        var voices = DisplayServer.TtsGetVoices();
+        if (voices.Count == 0) return;
+
+        string[] prefs = FemaleVoice
+            ? ["Zira", "female", "woman"]
+            : ["David", "Mark", "male", "man"];
+
+        foreach (var target in prefs)
+            foreach (var v in voices)
+            {
+                var name = v.TryGetValue("name", out var n) ? n.AsString() : "";
+                var id   = v.TryGetValue("id",   out var i) ? i.AsString() : "";
+                if (name.Contains(target, System.StringComparison.OrdinalIgnoreCase)
+                 || id.Contains(target,   System.StringComparison.OrdinalIgnoreCase))
+                { _voiceId = id; return; }
+            }
+
+        // Last resort: first available voice
+        _voiceId = voices[0].TryGetValue("id", out var fid) ? fid.AsString() : "";
     }
 
     public override void _PhysicsProcess(double delta)
@@ -288,6 +320,10 @@ public partial class CompanionController : CharacterBody3D
     void Say(string line)
     {
         _bubble.Text = $"\"{line}\"";
+
+        if (_voiceId.Length > 0)
+            DisplayServer.TtsSpeak(line, _voiceId, 80, VoicePitch, VoiceRate, ++_utteranceId, false);
+
         GetTree().CreateTimer(4.5).Timeout += () =>
         {
             if (IsInstanceValid(this)) _bubble.Text = "";

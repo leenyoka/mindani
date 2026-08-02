@@ -79,30 +79,39 @@ position = Vector3(290, 85, 315)
 CompanionName = "Conner"
 BodyColor = Color(0.15, 0.60, 0.25, 1)
 Dialogue = PackedStringArray("I could build something amazing here.", "These flat areas are perfect for a base.", "Every great structure starts with one block.", "I'm going to need more materials.", "This spot has great foundations!")
+VoicePitch = 0.9
+VoiceRate = 0.95
 
 [node name="Milani" parent="." instance=ExtResource("4")]
 position = Vector3(330, 85, 278)
 CompanionName = "Milani"
 BodyColor = Color(0.55, 0.15, 0.80, 1)
 Dialogue = PackedStringArray("The flowers out here are beautiful!", "I can hear animals nearby...", "Nature is so peaceful.", "Look at all these trees!", "I love wandering through the forest.")
+VoicePitch = 1.15
 
 [node name="Xyan" parent="." instance=ExtResource("4")]
 position = Vector3(278, 85, 330)
 CompanionName = "Xyan"
 BodyColor = Color(0.95, 0.45, 0.10, 1)
 Dialogue = PackedStringArray("Gotta keep moving!", "I wonder how fast I can cross this world.", "Running is the best way to explore!", "There's always somewhere new to go.", "No stopping now!")
+VoiceRate = 1.2
 
 [node name="Amarra" parent="." instance=ExtResource("4")]
 position = Vector3(350, 85, 340)
 CompanionName = "Amarra"
 BodyColor = Color(0.85, 0.20, 0.55, 1)
 Dialogue = PackedStringArray("This view is gorgeous!", "Everything out here inspires me.", "I love finding new colours in the world.", "Every place has its own beauty.", "I'm going to remember this spot.")
+FemaleVoice = true
+VoicePitch = 1.05
 
 [node name="Azalia" parent="." instance=ExtResource("4")]
 position = Vector3(215, 85, 270)
 CompanionName = "Azalia"
 BodyColor = Color(0.10, 0.70, 0.65, 1)
 Dialogue = PackedStringArray("What is this terrain made of?", "I'm mapping everything in my head.", "Interesting... the ground changes here.", "There must be caves underground.", "Every observation teaches me something.")
+FemaleVoice = true
+VoicePitch = 0.95
+VoiceRate = 0.9
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
