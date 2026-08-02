@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://companion"]
+
+[ext_resource type="Script" path="res://scripts/Companions/CompanionController.cs" id="1"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
+height = 1.4
+radius = 0.28
+
+[node name="Companion" type="CharacterBody3D"]
+script = ExtResource("1")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.7, 0)
+shape = SubResource("CapsuleShape3D_1")

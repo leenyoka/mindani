@@ -10,7 +10,6 @@ mono_crash.*.json
 /obj/
 *.csproj.user
 
-# Voxel Tools — using module build (types baked into custom Godot 4.6 editor)
 addons/
 
 # Android export artifacts

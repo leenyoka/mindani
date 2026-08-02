@@ -33,12 +33,6 @@ public partial class PlayerController : CharacterBody3D
             );
         }
 
-        if (e is InputEventKey key && key.Pressed && key.Keycode == Key.Escape)
-        {
-            Input.MouseMode = Input.MouseMode == Input.MouseModeEnum.Captured
-                ? Input.MouseModeEnum.Visible
-                : Input.MouseModeEnum.Captured;
-        }
     }
 
     public override void _PhysicsProcess(double delta)

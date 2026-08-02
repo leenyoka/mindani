@@ -13,8 +13,8 @@ config_version=5
 config/name="Mindani"
 config/description="A Minecraft-inspired adventure game for Lindani"
 config/version="0.1.0"
-run/main_scene="res://scenes/main.tscn"
-config/features=PackedStringArray("4.6", "C#", "Mobile")
+run/main_scene="res://scenes/menu.tscn"
+config/features=PackedStringArray("4.7", "C#", "Mobile")
 config/icon="res://assets/icon.svg"
 
 [display]

@@ -20,8 +20,6 @@ position = Vector3(0, 1.7, 0)
 [node name="Camera3D" type="Camera3D" parent="CameraArm"]
 unique_name_in_owner = true
 
-[node name="VoxelViewer" type="VoxelViewer" parent="CameraArm"]
-
 [node name="NameTag" type="Label3D" parent="."]
 position = Vector3(0, 2.2, 0)
 text = "Lindani"

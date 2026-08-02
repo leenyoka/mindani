@@ -27,6 +27,15 @@ public partial class Hotbar : HBoxContainer
             AddChild(panel);
             panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = colour });
         }
+
+        if (Interaction == null)
+        {
+            foreach (var node in GetTree().GetNodesInGroup("block_interaction"))
+            {
+                if (node is BlockInteraction bi) { Interaction = bi; break; }
+            }
+        }
+
         UpdateSelection();
     }
 
@@ -55,7 +64,7 @@ public partial class Hotbar : HBoxContainer
         for (int i = 0; i < GetChildCount(); i++)
         {
             var style = (StyleBoxFlat)GetChild<PanelContainer>(i).GetThemeStylebox("panel");
-            style.BorderWidth = i == _selected ? 3 : 0;
+            style.SetBorderWidthAll(i == _selected ? 3 : 0);
             style.BorderColor = Colors.White;
         }
     }
