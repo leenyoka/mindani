@@ -81,8 +81,8 @@ public partial class VoxelWorld : Node3D
 
         _player = GetNodeOrNull<CharacterBody3D>("/root/Main/Lindani");
 
-        // Spawn starts at world position (32,24,32) → chunk (1,1)
-        const int startCX = 1, startCZ = 1;
+        // Spawn starts at world position (256,24,256) → chunk (8,8)
+        const int startCX = 8, startCZ = 8;
         _lastChunk = (startCX, startCZ);
         UpdateChunks(startCX, startCZ);
     }
@@ -263,25 +263,25 @@ public partial class VoxelWorld : Node3D
             }
         }
 
-        // Flat safe landing zone around the player spawn point
-        FlattenArea(22, 22, 42, 42, SeaLevel);
+        // Flat safe landing zone around the player spawn point (256,256)
+        FlattenArea(246, 246, 266, 266, SeaLevel);
 
-        // City footprint in the far corner
-        const int CX0 = 300, CZ0 = 300, CX1 = 323, CZ1 = 323;
-        int cityY = SurfaceAt(311, 311);
+        // City footprint — about 150 blocks east-northeast of spawn
+        const int CX0 = 380, CZ0 = 380, CX1 = 403, CZ1 = 403;
+        int cityY = SurfaceAt(391, 391);
         FlattenArea(CX0, CZ0, CX1, CZ1, cityY);
 
-        // Platforms must be placed before trees so Plank decks skip the Grass check
-        BuildViewPlatform( 50,  50, "Sunrise Peak");
-        BuildViewPlatform(460,  50, "East Ridge");
-        BuildViewPlatform( 50, 460, "Forest Watch");
-        BuildViewPlatform(255, 255, "Valley View");
+        // Platforms — one in each quadrant; built before trees so Plank decks block growth
+        BuildViewPlatform( 80,  80, "Sunrise Peak");
+        BuildViewPlatform(430,  80, "East Ridge");
+        BuildViewPlatform( 80, 430, "Forest Watch");
+        BuildViewPlatform(430, 430, "Valley View");
 
         // Trees and flowers — skip spawn zone and city buffer
         for (int x = 2; x < Width - 2; x++)
         for (int z = 2; z < Depth - 2; z++)
         {
-            if (x >= 18 && x <= 46 && z >= 18 && z <= 46) continue; // spawn area
+            if (x >= 242 && x <= 270 && z >= 242 && z <= 270) continue; // spawn area
             if (x >= CX0 - 3 && x <= CX1 + 3 && z >= CZ0 - 3 && z <= CZ1 + 3) continue;
 
             int sy = SurfaceAt(x, z);

@@ -37,68 +37,68 @@ shadow_enabled = true
 script = ExtResource("2")
 
 [node name="Lindani" parent="." instance=ExtResource("1")]
-position = Vector3(32, 24, 32)
+position = Vector3(256, 24, 256)
 
 [node name="Chicken1" parent="." instance=ExtResource("5")]
-position = Vector3(27, 30, 28)
+position = Vector3(261, 55, 262)
 AnimalKind = "Chicken"
 
 [node name="Chicken2" parent="." instance=ExtResource("5")]
-position = Vector3(30, 30, 26)
+position = Vector3(264, 55, 260)
 AnimalKind = "Chicken"
 
 [node name="Chicken3" parent="." instance=ExtResource("5")]
-position = Vector3(25, 30, 31)
+position = Vector3(259, 55, 265)
 AnimalKind = "Chicken"
 
 [node name="Pig1" parent="." instance=ExtResource("5")]
-position = Vector3(35, 30, 27)
+position = Vector3(269, 55, 261)
 AnimalKind = "Pig"
 
 [node name="Pig2" parent="." instance=ExtResource("5")]
-position = Vector3(28, 30, 36)
+position = Vector3(262, 55, 270)
 AnimalKind = "Pig"
 
 [node name="Sheep1" parent="." instance=ExtResource("5")]
-position = Vector3(36, 30, 34)
+position = Vector3(270, 55, 268)
 AnimalKind = "Sheep"
 
 [node name="Sheep2" parent="." instance=ExtResource("5")]
-position = Vector3(24, 30, 34)
+position = Vector3(258, 55, 268)
 AnimalKind = "Sheep"
 
 [node name="Caleb" parent="." instance=ExtResource("4")]
-position = Vector3(80, 55, 60)
+position = Vector3(310, 55, 290)
 CompanionName = "Caleb"
 BodyColor = Color(0.1, 0.35, 0.85, 1)
 Dialogue = PackedStringArray("There's so much to explore out here!", "I wonder what's over that hill...", "This place is incredible!", "I could walk forever out here.", "Adventure is everywhere!")
 
 [node name="Conner" parent="." instance=ExtResource("4")]
-position = Vector3(60, 55, 80)
+position = Vector3(290, 55, 315)
 CompanionName = "Conner"
 BodyColor = Color(0.15, 0.60, 0.25, 1)
 Dialogue = PackedStringArray("I could build something amazing here.", "These flat areas are perfect for a base.", "Every great structure starts with one block.", "I'm going to need more materials.", "This spot has great foundations!")
 
 [node name="Milani" parent="." instance=ExtResource("4")]
-position = Vector3(120, 55, 45)
+position = Vector3(330, 55, 278)
 CompanionName = "Milani"
 BodyColor = Color(0.55, 0.15, 0.80, 1)
 Dialogue = PackedStringArray("The flowers out here are beautiful!", "I can hear animals nearby...", "Nature is so peaceful.", "Look at all these trees!", "I love wandering through the forest.")
 
 [node name="Xyan" parent="." instance=ExtResource("4")]
-position = Vector3(45, 55, 120)
+position = Vector3(278, 55, 330)
 CompanionName = "Xyan"
 BodyColor = Color(0.95, 0.45, 0.10, 1)
 Dialogue = PackedStringArray("Gotta keep moving!", "I wonder how fast I can cross this world.", "Running is the best way to explore!", "There's always somewhere new to go.", "No stopping now!")
 
 [node name="Amarra" parent="." instance=ExtResource("4")]
-position = Vector3(100, 55, 90)
+position = Vector3(350, 55, 340)
 CompanionName = "Amarra"
 BodyColor = Color(0.85, 0.20, 0.55, 1)
 Dialogue = PackedStringArray("This view is gorgeous!", "Everything out here inspires me.", "I love finding new colours in the world.", "Every place has its own beauty.", "I'm going to remember this spot.")
 
 [node name="Azalia" parent="." instance=ExtResource("4")]
-position = Vector3(55, 55, 30)
+position = Vector3(215, 55, 270)
 CompanionName = "Azalia"
 BodyColor = Color(0.10, 0.70, 0.65, 1)
 Dialogue = PackedStringArray("What is this terrain made of?", "I'm mapping everything in my head.", "Interesting... the ground changes here.", "There must be caves underground.", "Every observation teaches me something.")
