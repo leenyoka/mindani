@@ -1,4 +1,5 @@
 using Godot;
+using Mindani.World;
 
 namespace Mindani.Animals;
 
@@ -12,6 +13,7 @@ public partial class AnimalController : CharacterBody3D
     const float FleeRange = 4.5f;
 
     CharacterBody3D? _player;
+    VoxelWorld?      _world;
     Vector2          _wanderDir;
     double           _wanderTime;
 
@@ -21,9 +23,13 @@ public partial class AnimalController : CharacterBody3D
     {
         BuildVisuals();
         _player     = GetNodeOrNull<CharacterBody3D>("/root/Main/Lindani");
+        _world      = GetNodeOrNull<VoxelWorld>("/root/Main/VoxelWorld");
         _wanderDir  = RandDir();
         _wanderTime = _rng.NextDouble() * 3 + 1;
         AddToGroup("animal");
+
+        FloorSnapLength = 0.4f;
+        FloorMaxAngle   = Mathf.DegToRad(52f);
     }
 
     void BuildVisuals()
@@ -111,6 +117,10 @@ public partial class AnimalController : CharacterBody3D
 
         if (!fleeing)
         {
+            // Turn away immediately if a solid block is directly ahead
+            if (_wanderDir.LengthSquared() > 0.01f && IsBlockedAhead())
+                _wanderDir = RandDir();
+
             _wanderTime -= delta;
             if (_wanderTime <= 0)
             {
@@ -129,6 +139,17 @@ public partial class AnimalController : CharacterBody3D
             var flat = GlobalPosition + new Vector3(vx, 0, vz);
             LookAt(flat, Vector3.Up);
         }
+    }
+
+    bool IsBlockedAhead()
+    {
+        if (_world == null) return false;
+        var ahead = GlobalPosition + new Vector3(_wanderDir.X, 0, _wanderDir.Y) * 1.2f;
+        byte b = _world.GetBlock(
+            Mathf.FloorToInt(ahead.X),
+            Mathf.FloorToInt(GlobalPosition.Y + 0.5f),
+            Mathf.FloorToInt(ahead.Z));
+        return b != VoxelWorld.Air && b != VoxelWorld.Water && b != VoxelWorld.Flower;
     }
 
     static Vector2 RandDir()

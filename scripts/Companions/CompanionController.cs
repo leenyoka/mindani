@@ -169,7 +169,9 @@ public partial class CompanionController : CharacterBody3D
             return (0f, 0f);
         }
 
-        var dir = HorizDir(_target.GlobalPosition);
+        // Move toward the flank position so we approach from the side, not directly behind
+        var flank = FlankPosition();
+        var dir   = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z).Normalized();
         return (dir.X * FollowSpeed, dir.Y * FollowSpeed);
     }
 
@@ -183,17 +185,16 @@ public partial class CompanionController : CharacterBody3D
 
         float dist = HorizDist(_target.GlobalPosition);
 
-        // Target drifted a bit — follow again
-        if (dist > StopRange * 2.5f && dist < LostRange)
-        {
-            _state = AiState.Follow;
-            return (0f, 0f);
-        }
-
-        // Target gone too far — give up
         if (dist >= LostRange)
         {
             ResumeWander("I lost them...");
+            return (0f, 0f);
+        }
+
+        // Re-enter follow if target drifted away
+        if (dist > StopRange * 2.5f)
+        {
+            _state = AiState.Follow;
             return (0f, 0f);
         }
 
@@ -210,16 +211,30 @@ public partial class CompanionController : CharacterBody3D
         if (_stateTimer <= 0)
         {
             if (_rng.NextDouble() < 0.3)
-            {
                 ResumeWander("See you later!");
-            }
             else
-            {
                 _stateTimer = _rng.NextDouble() * 10 + 6;
-            }
+        }
+
+        // Keep pace when the target moves: walk toward flank if we've drifted from it
+        var flank      = FlankPosition();
+        float flankDist = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z).Length();
+        if (flankDist > 1.5f)
+        {
+            var dir = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z).Normalized();
+            return (dir.X * WalkSpeed, dir.Y * WalkSpeed);
         }
 
         return (0f, 0f);
+    }
+
+    // Returns a position alongside the target so companions walk beside, not behind.
+    // Name length determines left-side vs right-side consistently per companion.
+    Vector3 FlankPosition()
+    {
+        if (_target == null) return GlobalPosition;
+        float side = (CompanionName.Length & 1) == 0 ? 2.0f : -2.0f;
+        return _target.GlobalPosition + _target.GlobalTransform.Basis.X * side;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
