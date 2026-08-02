@@ -134,6 +134,22 @@ public partial class AnimalController : CharacterBody3D
         Velocity = new Vector3(vx, vel.Y, vz);
         MoveAndSlide();
 
+        // If MoveAndSlide hit a non-terrain body (animal or companion), stop pushing
+        // against it immediately by picking a new direction — this kills the flicker.
+        if (!fleeing && GetSlideCollisionCount() > 0)
+        {
+            for (int i = 0; i < GetSlideCollisionCount(); i++)
+            {
+                var collider = GetSlideCollision(i).GetCollider();
+                if (collider is Node node && !node.IsInGroup("terrain"))
+                {
+                    _wanderDir  = RandDir();
+                    _wanderTime = _rng.NextDouble() * 2 + 1;
+                    break;
+                }
+            }
+        }
+
         if (new Vector2(vx, vz).LengthSquared() > 0.01f)
         {
             var flat = GlobalPosition + new Vector3(vx, 0, vz);
@@ -143,13 +159,38 @@ public partial class AnimalController : CharacterBody3D
 
     bool IsBlockedAhead()
     {
-        if (_world == null) return false;
-        var ahead = GlobalPosition + new Vector3(_wanderDir.X, 0, _wanderDir.Y) * 1.2f;
-        byte b = _world.GetBlock(
-            Mathf.FloorToInt(ahead.X),
-            Mathf.FloorToInt(GlobalPosition.Y + 0.5f),
-            Mathf.FloorToInt(ahead.Z));
-        return b != VoxelWorld.Air && b != VoxelWorld.Water && b != VoxelWorld.Flower;
+        var dir3 = new Vector3(_wanderDir.X, 0, _wanderDir.Y);
+
+        // Check world block 1.2 units ahead
+        if (_world != null)
+        {
+            var ahead = GlobalPosition + dir3 * 1.2f;
+            byte b = _world.GetBlock(
+                Mathf.FloorToInt(ahead.X),
+                Mathf.FloorToInt(GlobalPosition.Y + 0.5f),
+                Mathf.FloorToInt(ahead.Z));
+            if (b != VoxelWorld.Air && b != VoxelWorld.Water && b != VoxelWorld.Flower)
+                return true;
+        }
+
+        // Also check for other animals and companions in the wander direction so the
+        // animal steers away before contact rather than flickering on impact.
+        var lookAhead = GlobalPosition + dir3 * 1.0f;
+        foreach (var node in GetTree().GetNodesInGroup("animal"))
+        {
+            if (node == this) continue;
+            var diff = ((Node3D)node).GlobalPosition - lookAhead;
+            diff.Y = 0;
+            if (diff.Length() < 0.9f) return true;
+        }
+        foreach (var node in GetTree().GetNodesInGroup("companion"))
+        {
+            var diff = ((Node3D)node).GlobalPosition - GlobalPosition;
+            diff.Y = 0;
+            if (diff.Length() < 1.5f) return true;
+        }
+
+        return false;
     }
 
     static Vector2 RandDir()
