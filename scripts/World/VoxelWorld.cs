@@ -40,6 +40,8 @@ public partial class VoxelWorld : Node3D
     readonly byte[,,] _data = new byte[Width, Height, Depth];
     readonly System.Random _rng = new(42); // fixed seed = same world every run
 
+    public static readonly System.Collections.Generic.List<(string Name, Vector3 Position)> SpawnPoints = new();
+
     MeshInstance3D   _mesh     = null!;
     StaticBody3D     _body     = null!;
     CollisionShape3D _colShape = null!;
@@ -104,6 +106,7 @@ public partial class VoxelWorld : Node3D
     void GenerateTerrain()
     {
         const int SeaLevel = 20;
+        SpawnPoints.Clear();
 
         // Base terrain
         for (int x = 0; x < Width;  x++)
@@ -129,7 +132,13 @@ public partial class VoxelWorld : Node3D
         int cityY = SurfaceAt(50, 50);
         FlattenArea(CX0, CZ0, CX1, CZ1, cityY);
 
-        // Trees and flowers (avoid city zone)
+        // Observation platforms — built before trees so Plank decks block tree growth
+        BuildViewPlatform(10, 10, "Sunrise Peak");
+        BuildViewPlatform(54, 10, "East Ridge");
+        BuildViewPlatform(10, 54, "Forest Watch");
+        BuildViewPlatform(35, 25, "Valley View");
+
+        // Trees and flowers (avoid city zone; platform decks are Plank so Grass check skips them)
         for (int x = 2; x < Width  - 2; x++)
         for (int z = 2; z < Depth  - 2; z++)
         {
@@ -144,6 +153,47 @@ public partial class VoxelWorld : Node3D
 
         // Build the city
         BuildCity(CX0, CZ0, CX1, CZ1, cityY);
+    }
+
+    void BuildViewPlatform(int cx, int cz, string name)
+    {
+        const int   FlatR  = 4;
+        const int   SlopeR = 10;
+        const float Rate   = 5f / (SlopeR - FlatR); // drops 5 blocks over 6 units ≈ 40° — walkable
+
+        int groundY  = SurfaceAt(cx, cz);
+        int topY     = groundY + 5;
+
+        for (int x = cx - SlopeR; x <= cx + SlopeR; x++)
+        for (int z = cz - SlopeR; z <= cz + SlopeR; z++)
+        {
+            if ((uint)x >= Width || (uint)z >= Depth) continue;
+
+            float dist = Mathf.Sqrt((float)((x - cx) * (x - cx) + (z - cz) * (z - cz)));
+            if (dist > SlopeR) continue;
+
+            bool isTop = dist <= FlatR;
+            int  fillY = isTop
+                ? topY
+                : Mathf.Max(groundY, topY - (int)((dist - FlatR) * Rate));
+
+            for (int y = 0; y < Height; y++)
+                _data[x, y, z] =
+                    y < fillY   ? Stone
+                  : y == fillY  ? (isTop ? Plank : (dist < SlopeR - 2 ? Dirt : Grass))
+                  :               Air;
+        }
+
+        // Glass railing around the flat deck perimeter
+        for (int d = -FlatR; d <= FlatR; d++)
+        {
+            Set(cx + d, topY + 1, cz - FlatR, Glass);
+            Set(cx + d, topY + 1, cz + FlatR, Glass);
+            Set(cx - FlatR, topY + 1, cz + d, Glass);
+            Set(cx + FlatR, topY + 1, cz + d, Glass);
+        }
+
+        SpawnPoints.Add((name, new Vector3(cx, topY + 1.5f, cz)));
     }
 
     int SurfaceAt(int x, int z)
