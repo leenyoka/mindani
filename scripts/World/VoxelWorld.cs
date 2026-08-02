@@ -57,6 +57,13 @@ public partial class VoxelWorld : Node3D
     readonly StandardMaterial3D[] _mats = new StandardMaterial3D[MatCount];
     public static readonly List<(string Name, Vector3 Position)> SpawnPoints = new();
 
+    // Pre-allocated mesh buffers — cleared and reused each BuildChunkMesh call
+    // to avoid allocating 48 Lists on every chunk build.
+    readonly List<Vector3>[] _bVerts = new List<Vector3>[MatCount];
+    readonly List<Vector2>[] _bUVs   = new List<Vector2>[MatCount];
+    readonly List<Vector3>[] _bNorms = new List<Vector3>[MatCount];
+    readonly List<int>[]     _bTris  = new List<int>[MatCount];
+
     // ── Noise ─────────────────────────────────────────────────────────────
     FastNoiseLite _hillNoise     = null!;
     FastNoiseLite _mountainNoise = null!;
@@ -78,6 +85,12 @@ public partial class VoxelWorld : Node3D
 
     public override void _Ready()
     {
+        for (int i = 0; i < MatCount; i++)
+        {
+            _bVerts[i] = new(4096); _bUVs[i]  = new(4096);
+            _bNorms[i] = new(4096); _bTris[i] = new(8192);
+        }
+
         LoadMaterials();
         InitNoise();
         PlaceStructures();
@@ -484,9 +497,7 @@ public partial class VoxelWorld : Node3D
 
         if (arrayMesh.GetSurfaceCount() > 0)
         {
-            var tri = arrayMesh.CreateTrimeshShape();
-            tri.BackfaceCollision = true;
-            col.Shape = tri;
+            col.Shape = arrayMesh.CreateTrimeshShape();
         }
 
         _active[(cx, cz)] = new ChunkObjs { Mesh = mesh, Body = body, Col = col };
@@ -525,46 +536,67 @@ public partial class VoxelWorld : Node3D
     {
         int wx0 = cx * CW, wz0 = cz * CD;
 
-        var verts = new List<Vector3>[MatCount];
-        var uvs   = new List<Vector2>[MatCount];
-        var norms = new List<Vector3>[MatCount];
-        var tris  = new List<int>[MatCount];
-        for (int i = 0; i < MatCount; i++) { verts[i]=[]; uvs[i]=[]; norms[i]=[]; tris[i]=[]; }
+        // Cache the five chunk data arrays we need (centre + 4 cardinal neighbours)
+        // so the inner loop never touches the dictionary.
+        _chunkData.TryGetValue((cx,   cz),   out var dC);
+        _chunkData.TryGetValue((cx-1, cz),   out var dXn);
+        _chunkData.TryGetValue((cx+1, cz),   out var dXp);
+        _chunkData.TryGetValue((cx,   cz-1), out var dZn);
+        _chunkData.TryGetValue((cx,   cz+1), out var dZp);
+
+        // Inline neighbour lookup — no dictionary, no bounds-checked GetBlock call.
+        byte FastGet(int lx, int y, int lz)
+        {
+            if ((uint)y >= Height) return Air;
+            byte[,,]? d; int alx = lx, alz = lz;
+            if      (lx < 0)   { d = dXn; alx = lx + CW; }
+            else if (lx >= CW) { d = dXp; alx = lx - CW; }
+            else if (lz < 0)   { d = dZn; alz = lz + CD; }
+            else if (lz >= CD) { d = dZp; alz = lz - CD; }
+            else                { d = dC; }
+            return d != null ? d[alx, y, alz] : Air;
+        }
+
+        // Reuse pre-allocated buffers — no List heap allocations per call.
+        for (int i = 0; i < MatCount; i++)
+        {
+            _bVerts[i].Clear(); _bUVs[i].Clear();
+            _bNorms[i].Clear(); _bTris[i].Clear();
+        }
 
         for (int lx = 0; lx < CW;     lx++)
         for (int y  = 0; y  < Height; y++)
         for (int lz = 0; lz < CD;     lz++)
         {
-            byte block = GetBlock(wx0 + lx, y, wz0 + lz);
+            byte block = FastGet(lx, y, lz);
             if (block == Air) continue;
 
             foreach (var (dir, norm, quad) in Faces)
             {
-                byte nb = GetBlock(wx0 + lx + dir.X, y + dir.Y, wz0 + lz + dir.Z);
-                // Treat Water as transparent so river beds are visible through water
+                byte nb = FastGet(lx + dir.X, y + dir.Y, lz + dir.Z);
                 if (nb != Air && nb != Leaves && nb != Glass && nb != Water) continue;
                 if (nb == block) continue;
 
                 int m = FaceMat(block, dir.Y);
-                int b = verts[m].Count;
+                int b = _bVerts[m].Count;
                 var origin = new Vector3(wx0 + lx, y, wz0 + lz);
-                foreach (var c in quad) verts[m].Add(origin + c);
-                norms[m].AddRange([norm, norm, norm, norm]);
-                uvs[m].AddRange(QuadUVs);
-                tris[m].AddRange([b, b+1, b+2, b, b+2, b+3]);
+                foreach (var c in quad) _bVerts[m].Add(origin + c);
+                _bNorms[m].AddRange([norm, norm, norm, norm]);
+                _bUVs[m].AddRange(QuadUVs);
+                _bTris[m].AddRange([b, b+1, b+2, b, b+2, b+3]);
             }
         }
 
         var arrayMesh = new ArrayMesh();
         for (int m = 0; m < MatCount; m++)
         {
-            if (verts[m].Count == 0) continue;
+            if (_bVerts[m].Count == 0) continue;
             var arr = new Godot.Collections.Array();
             arr.Resize((int)Mesh.ArrayType.Max);
-            arr[(int)Mesh.ArrayType.Vertex] = verts[m].ToArray();
-            arr[(int)Mesh.ArrayType.Normal] = norms[m].ToArray();
-            arr[(int)Mesh.ArrayType.TexUV]  = uvs[m].ToArray();
-            arr[(int)Mesh.ArrayType.Index]  = tris[m].ToArray();
+            arr[(int)Mesh.ArrayType.Vertex] = _bVerts[m].ToArray();
+            arr[(int)Mesh.ArrayType.Normal] = _bNorms[m].ToArray();
+            arr[(int)Mesh.ArrayType.TexUV]  = _bUVs[m].ToArray();
+            arr[(int)Mesh.ArrayType.Index]  = _bTris[m].ToArray();
             int surf = arrayMesh.GetSurfaceCount();
             arrayMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arr);
             arrayMesh.SurfaceSetMaterial(surf, _mats[m]);

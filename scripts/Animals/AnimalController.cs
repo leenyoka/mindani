@@ -17,6 +17,11 @@ public partial class AnimalController : CharacterBody3D
     Vector2          _wanderDir;
     double           _wanderTime;
 
+    // Cached group node lists — refreshed every ~2 s to avoid 840 allocations/sec.
+    Godot.Collections.Array<Node> _animalCache    = [];
+    Godot.Collections.Array<Node> _companionCache = [];
+    double _cacheTimer = 0;
+
     static readonly System.Random _rng = new();
 
     public override void _Ready()
@@ -131,14 +136,24 @@ public partial class AnimalController : CharacterBody3D
             vz = _wanderDir.Y * WalkSpeed;
         }
 
+        // Refresh cached node lists every ~2 seconds (staggered per animal).
+        _cacheTimer -= delta;
+        if (_cacheTimer <= 0)
+        {
+            _cacheTimer     = 2.0 + _rng.NextDouble() * 0.5;
+            _animalCache    = GetTree().GetNodesInGroup("animal");
+            _companionCache = GetTree().GetNodesInGroup("companion");
+        }
+
         Velocity = new Vector3(vx, vel.Y, vz);
         MoveAndSlide();
 
         // If MoveAndSlide hit a non-terrain body (animal or companion), stop pushing
         // against it immediately by picking a new direction — this kills the flicker.
-        if (!fleeing && GetSlideCollisionCount() > 0)
+        int slideCount = GetSlideCollisionCount();
+        if (!fleeing && slideCount > 0)
         {
-            for (int i = 0; i < GetSlideCollisionCount(); i++)
+            for (int i = 0; i < slideCount; i++)
             {
                 var collider = GetSlideCollision(i).GetCollider();
                 if (collider is Node node && !node.IsInGroup("terrain"))
@@ -173,18 +188,18 @@ public partial class AnimalController : CharacterBody3D
                 return true;
         }
 
-        // Also check for other animals and companions in the wander direction so the
-        // animal steers away before contact rather than flickering on impact.
+        // Also check for other animals and companions using cached node lists.
         var lookAhead = GlobalPosition + dir3 * 1.0f;
-        foreach (var node in GetTree().GetNodesInGroup("animal"))
+        foreach (var node in _animalCache)
         {
-            if (node == this) continue;
+            if (node == this || !IsInstanceValid(node)) continue;
             var diff = ((Node3D)node).GlobalPosition - lookAhead;
             diff.Y = 0;
             if (diff.Length() < 0.9f) return true;
         }
-        foreach (var node in GetTree().GetNodesInGroup("companion"))
+        foreach (var node in _companionCache)
         {
+            if (!IsInstanceValid(node)) continue;
             var diff = ((Node3D)node).GlobalPosition - GlobalPosition;
             diff.Y = 0;
             if (diff.Length() < 1.5f) return true;
