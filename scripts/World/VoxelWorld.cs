@@ -48,6 +48,9 @@ public partial class VoxelWorld : Node3D
     struct ChunkObjs { public MeshInstance3D Mesh; public StaticBody3D Body; public CollisionShape3D Col; }
     readonly Dictionary<(int, int), ChunkObjs> _active = new();
 
+    // Pending loads are queued nearest-first and drained 2 per frame to avoid spikes.
+    readonly Queue<(int cx, int cz)> _loadQueue = new();
+
     (int cx, int cz) _lastChunk = (-999, -999);
     CharacterBody3D? _player;
 
@@ -88,6 +91,14 @@ public partial class VoxelWorld : Node3D
 
     public override void _Process(double _delta)
     {
+        // Drain up to 2 queued chunk loads per frame to avoid frame spikes on teleport.
+        for (int i = 0; i < 2 && _loadQueue.Count > 0; i++)
+        {
+            var (qx, qz) = _loadQueue.Dequeue();
+            if (!_active.ContainsKey((qx, qz)))
+                LoadChunk(qx, qz);
+        }
+
         if (_player == null) return;
         int cx = FloorDiv((int)_player.GlobalPosition.X, CW);
         int cz = FloorDiv((int)_player.GlobalPosition.Z, CD);
@@ -427,6 +438,7 @@ public partial class VoxelWorld : Node3D
         int x0 = pcx - RenderDist, x1 = pcx + RenderDist;
         int z0 = pcz - RenderDist, z1 = pcz + RenderDist;
 
+        // Unload immediately — these chunks are out of range.
         var remove = new List<(int, int)>();
         foreach (var key in _active.Keys)
         {
@@ -436,10 +448,18 @@ public partial class VoxelWorld : Node3D
         }
         foreach (var k in remove) UnloadChunk(k.Item1, k.Item2);
 
-        for (int cx = x0; cx <= x1; cx++)
-        for (int cz = z0; cz <= z1; cz++)
+        // Enqueue missing chunks nearest-first (spiral from center outward) so the
+        // area around the player appears first, spreading the work across frames.
+        _loadQueue.Clear();
+        for (int r = 0; r <= RenderDist; r++)
+        for (int dx = -r; dx <= r; dx++)
+        for (int dz = -r; dz <= r; dz++)
+        {
+            if (Mathf.Abs(dx) != r && Mathf.Abs(dz) != r) continue; // ring perimeter only
+            int cx = pcx + dx, cz = pcz + dz;
             if (!_active.ContainsKey((cx, cz)))
-                LoadChunk(cx, cz);
+                _loadQueue.Enqueue((cx, cz));
+        }
     }
 
     void LoadChunk(int cx, int cz)

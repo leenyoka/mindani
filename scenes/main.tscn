@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://main"]
+[gd_scene load_steps=12 format=3 uid="uid://main"]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1"]
 [ext_resource type="Script" path="res://scripts/World/VoxelWorld.cs" id="2"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/animal.tscn" id="5"]
 [ext_resource type="Script" path="res://scripts/UI/PauseMenu.cs" id="6"]
 [ext_resource type="Script" path="res://scripts/UI/SpawnSelector.cs" id="7"]
+[ext_resource type="Script" path="res://scripts/World/DayNightCycle.cs" id="8"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_top_color = Color(0.18, 0.5, 0.92, 1)
@@ -137,3 +138,6 @@ script = ExtResource("6")
 
 [node name="SpawnSelector" type="CanvasLayer" parent="."]
 script = ExtResource("7")
+
+[node name="DayNightCycle" type="Node" parent="."]
+script = ExtResource("8")
