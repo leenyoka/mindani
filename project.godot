@@ -27,6 +27,10 @@ window/stretch/mode="canvas_items"
 
 project/assembly_name="Mindani"
 
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true
+
 [input]
 
 move_forward={
