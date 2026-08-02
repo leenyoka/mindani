@@ -26,6 +26,10 @@ public partial class CompanionController : CharacterBody3D
     double  _stateTimer;
     double  _sayTimer;
 
+    // Last direction the player was actually walking — used by FlankPosition so
+    // that companions don't react to camera look direction changes.
+    Vector3 _lastPlayerMoveDir = Vector3.Forward;
+
     // ── References ────────────────────────────────────────────────────────
     Label3D          _bubble = null!;
     CharacterBody3D? _player;
@@ -153,15 +157,16 @@ public partial class CompanionController : CharacterBody3D
             return (0f, 0f);
         }
 
-        float dist = HorizDist(_target.GlobalPosition);
-
-        if (dist > LostRange)
+        if (HorizDist(_target.GlobalPosition) > LostRange)
         {
             ResumeWander("Wait up...");
             return (0f, 0f);
         }
 
-        if (dist < StopRange)
+        // Stop when we've reached our designated flank spot, not when close to player centre.
+        var flank   = FlankPosition();
+        var toFlank = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z);
+        if (toFlank.Length() < 1.5f)
         {
             _state      = AiState.Grouped;
             _stateTimer = _rng.NextDouble() * 8 + 5;
@@ -169,9 +174,7 @@ public partial class CompanionController : CharacterBody3D
             return (0f, 0f);
         }
 
-        // Move toward the flank position so we approach from the side, not directly behind
-        var flank = FlankPosition();
-        var dir   = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z).Normalized();
+        var dir = toFlank.Normalized();
         return (dir.X * FollowSpeed, dir.Y * FollowSpeed);
     }
 
@@ -216,12 +219,18 @@ public partial class CompanionController : CharacterBody3D
                 _stateTimer = _rng.NextDouble() * 10 + 6;
         }
 
-        // Keep pace when the target moves: walk toward flank if we've drifted from it
-        var flank      = FlankPosition();
-        float flankDist = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z).Length();
-        if (flankDist > 1.5f)
+        // Only reposition when the player is actually walking (not just looking around),
+        // or if we've drifted very far — prevents companions running when Lindani pans
+        // the camera while standing still.
+        var flank     = FlankPosition();
+        var toFlank   = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z);
+        float flankDist = toFlank.Length();
+        var targetVel   = (_target as CharacterBody3D)?.Velocity ?? Vector3.Zero;
+        bool moving     = new Vector2(targetVel.X, targetVel.Z).LengthSquared() > 0.25f;
+
+        if (flankDist > 1.5f && (moving || flankDist > 4.0f))
         {
-            var dir = new Vector2(flank.X - GlobalPosition.X, flank.Z - GlobalPosition.Z).Normalized();
+            var dir = toFlank.Normalized();
             return (dir.X * WalkSpeed, dir.Y * WalkSpeed);
         }
 
@@ -229,12 +238,23 @@ public partial class CompanionController : CharacterBody3D
     }
 
     // Returns a position alongside the target so companions walk beside, not behind.
-    // Name length determines left-side vs right-side consistently per companion.
+    // Uses the player's actual walking velocity — NOT Basis.X — so looking around
+    // with the camera doesn't make companions run to a new spot.
     Vector3 FlankPosition()
     {
         if (_target == null) return GlobalPosition;
-        float side = (CompanionName.Length & 1) == 0 ? 2.0f : -2.0f;
-        return _target.GlobalPosition + _target.GlobalTransform.Basis.X * side;
+
+        // Update the cached movement direction only while the player is walking.
+        // When stationary, keep the last known direction so the flank position is stable.
+        var vel      = (_target as CharacterBody3D)?.Velocity ?? Vector3.Zero;
+        var moveFlat = new Vector3(vel.X, 0, vel.Z);
+        if (moveFlat.LengthSquared() > 0.25f)
+            _lastPlayerMoveDir = moveFlat.Normalized();
+
+        // Right perpendicular to travel direction in the XZ plane.
+        var right = new Vector3(-_lastPlayerMoveDir.Z, 0, _lastPlayerMoveDir.X);
+        float side = (CompanionName.Length & 1) == 0 ? 3.0f : -3.0f;
+        return _target.GlobalPosition + right * side;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
