@@ -124,7 +124,7 @@ public partial class CompanionController : CharacterBody3D
             var d = HorizDist(_player.GlobalPosition);
             if (d < DetectRange)
             {
-                Engage(_player, "Hey Lindani! I found you!");
+                Engage(_player, "Lindani! I found you! Come on, let's play!");
                 return (0f, 0f);
             }
         }
@@ -137,7 +137,7 @@ public partial class CompanionController : CharacterBody3D
             if (other._target == this) continue; // prevent A↔B mutual lock
             if (HorizDist(other.GlobalPosition) < DetectRange * 0.8f)
             {
-                Engage(other, $"{other.CompanionName}! There you are!");
+                Engage(other, $"{other.CompanionName}! Wait for me!");
                 return (0f, 0f);
             }
         }
@@ -191,7 +191,7 @@ public partial class CompanionController : CharacterBody3D
 
         if (HorizDist(_target.GlobalPosition) > LostRange)
         {
-            ResumeWander("Wait up...");
+            ResumeWander("Hey, wait for me!");
             return (0f, 0f);
         }
 
@@ -222,7 +222,7 @@ public partial class CompanionController : CharacterBody3D
 
         if (dist >= LostRange)
         {
-            ResumeWander("I lost them...");
+            ResumeWander("Where did you go?");
             return (0f, 0f);
         }
 
@@ -246,7 +246,7 @@ public partial class CompanionController : CharacterBody3D
         if (_stateTimer <= 0)
         {
             if (_rng.NextDouble() < 0.3)
-                ResumeWander("See you later!");
+                ResumeWander("I'm gonna go play over there!");
             else
                 _stateTimer = _rng.NextDouble() * 10 + 6;
         }
