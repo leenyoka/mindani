@@ -5,14 +5,12 @@ namespace Mindani.World;
 
 public partial class VoxelWorld : Node3D
 {
-    // ── World dimensions ──────────────────────────────────────────────────
-    public const int Width  = 512;
-    public const int Height = 64;
-    public const int Depth  = 512;
-
-    const int CW         = 32; // chunk width  (X)
-    const int CD         = 32; // chunk depth  (Z)
-    const int RenderDist =  3; // chunks in each direction → 7×7 = 49 active
+    // ── Dimensions ────────────────────────────────────────────────────────
+    public const int Height   = 80;   // taller for mountain peaks
+    public const int SeaLevel = 22;
+    const int CW         = 32;        // chunk width  X
+    const int CD         = 32;        // chunk depth  Z
+    const int RenderDist =  3;        // 7×7 = 49 active chunks
 
     // ── Block IDs ─────────────────────────────────────────────────────────
     public const byte Air    = 0;
@@ -26,6 +24,7 @@ public partial class VoxelWorld : Node3D
     public const byte Brick  = 8;
     public const byte Plank  = 9;
     public const byte Glass  = 10;
+    public const byte Water  = 11;
 
     // ── Material indices ──────────────────────────────────────────────────
     const int MatGrassTop  = 0;
@@ -39,28 +38,28 @@ public partial class VoxelWorld : Node3D
     const int MatBrick     = 8;
     const int MatPlank     = 9;
     const int MatGlass     = 10;
-    const int MatCount     = 11;
-
-    // ── Data ──────────────────────────────────────────────────────────────
-    readonly byte[,,] _data = new byte[Width, Height, Depth]; // 16 MB, Air = 0 by default
-    readonly System.Random _rng = new(42);
-
-    public static readonly List<(string Name, Vector3 Position)> SpawnPoints = new();
+    const int MatWater     = 11;
+    const int MatCount     = 12;
 
     // ── Chunk system ──────────────────────────────────────────────────────
-    struct ChunkObjs
-    {
-        public MeshInstance3D   Mesh;
-        public StaticBody3D     Body;
-        public CollisionShape3D Col;
-    }
+    // Data lives forever once generated; meshes are streamed in/out by distance.
+    readonly Dictionary<(int, int), byte[,,]> _chunkData = new();
 
-    readonly Dictionary<(int, int), ChunkObjs> _active   = new();
-    (int cx, int cz)                             _lastChunk = (-999, -999);
-    CharacterBody3D?                             _player;
+    struct ChunkObjs { public MeshInstance3D Mesh; public StaticBody3D Body; public CollisionShape3D Col; }
+    readonly Dictionary<(int, int), ChunkObjs> _active = new();
+
+    (int cx, int cz) _lastChunk = (-999, -999);
+    CharacterBody3D? _player;
 
     readonly StandardMaterial3D[] _mats = new StandardMaterial3D[MatCount];
+    public static readonly List<(string Name, Vector3 Position)> SpawnPoints = new();
 
+    // ── Noise ─────────────────────────────────────────────────────────────
+    FastNoiseLite _hillNoise     = null!;
+    FastNoiseLite _mountainNoise = null!;
+    FastNoiseLite _riverNoise    = null!;
+
+    // ── Faces ─────────────────────────────────────────────────────────────
     static readonly (Vector3I dir, Vector3 normal, Vector3[] quad)[] Faces =
     [
         (new( 0, 1, 0), Vector3.Up,      [new(0,1,0), new(1,1,0), new(1,1,1), new(0,1,1)]),
@@ -72,43 +71,362 @@ public partial class VoxelWorld : Node3D
     ];
     static readonly Vector2[] QuadUVs = [new(0,1), new(1,1), new(1,0), new(0,0)];
 
-    // ── Setup ─────────────────────────────────────────────────────────────
+    // ── Lifecycle ─────────────────────────────────────────────────────────
 
     public override void _Ready()
     {
         LoadMaterials();
-        GenerateTerrain();
+        InitNoise();
+        PlaceStructures();
 
         _player = GetNodeOrNull<CharacterBody3D>("/root/Main/Lindani");
 
-        // Spawn starts at world position (256,24,256) → chunk (8,8)
-        const int startCX = 8, startCZ = 8;
-        _lastChunk = (startCX, startCZ);
-        UpdateChunks(startCX, startCZ);
+        // Spawn is at world (256, 24, 256) → chunk (8, 8)
+        _lastChunk = (256 / CW, 256 / CD);
+        UpdateChunks(_lastChunk.cx, _lastChunk.cz);
     }
 
     public override void _Process(double _delta)
     {
         if (_player == null) return;
-
-        int cx = Mathf.Clamp((int)(_player.GlobalPosition.X / CW), 0, Width  / CW - 1);
-        int cz = Mathf.Clamp((int)(_player.GlobalPosition.Z / CD), 0, Depth  / CD - 1);
-
+        int cx = FloorDiv((int)_player.GlobalPosition.X, CW);
+        int cz = FloorDiv((int)_player.GlobalPosition.Z, CD);
         if ((cx, cz) == _lastChunk) return;
         _lastChunk = (cx, cz);
         UpdateChunks(cx, cz);
     }
 
-    // ── Chunk management ──────────────────────────────────────────────────
+    // ── Noise setup ───────────────────────────────────────────────────────
+
+    void InitNoise()
+    {
+        // Smooth rolling hills — 6-octave FBM, medium frequency
+        _hillNoise = new FastNoiseLite
+        {
+            Seed              = 42,
+            NoiseType         = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+            Frequency         = 0.004f,
+            FractalType       = FastNoiseLite.FractalTypeEnum.Fbm,
+            FractalOctaves    = 6,
+            FractalLacunarity = 2.0f,
+            FractalGain       = 0.5f,
+        };
+
+        // Large-scale mountain ranges — low frequency, fewer octaves
+        _mountainNoise = new FastNoiseLite
+        {
+            Seed           = 137,
+            NoiseType      = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+            Frequency      = 0.0018f,
+            FractalType    = FastNoiseLite.FractalTypeEnum.Fbm,
+            FractalOctaves = 4,
+        };
+
+        // River paths — single-octave, used for zero-crossing bands
+        _riverNoise = new FastNoiseLite
+        {
+            Seed      = 999,
+            NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+            Frequency = 0.003f,
+        };
+    }
+
+    // ── Terrain formula ───────────────────────────────────────────────────
+
+    (int surface, bool isRiver, float mtnFactor) ComputeColumn(int wx, int wz)
+    {
+        float hill = _hillNoise.GetNoise2D(wx, wz);     // −1..1  smooth hills
+        float mtn  = _mountainNoise.GetNoise2D(wx, wz); // −1..1  mountain presence
+        float rv   = _riverNoise.GetNoise2D(wx, wz);    // −1..1  river winding path
+
+        // Gentle hills: ±10 blocks (much smoother than the old sin/cos approach)
+        int surface = SeaLevel + (int)(hill * 10f);
+
+        // Mountains: only rise where noise exceeds threshold; quadratic for
+        // gradual foothills that steepen toward the peak
+        float mtnFactor = Mathf.Max(0f, (mtn - 0.05f) / 0.95f); // 0–1
+        surface += (int)(mtnFactor * mtnFactor * 50f);           // up to +50 blocks
+
+        surface = Mathf.Clamp(surface, 3, Height - 5);
+
+        // Rivers: narrow bands around zero-crossings of river noise.
+        // Bank shaping: terrain gradually lowers as we approach the channel.
+        float riverBand = 1.0f - Mathf.Abs(rv);
+        float bankT     = Mathf.Clamp((riverBand - 0.80f) / 0.15f, 0f, 1f);
+
+        if (bankT > 0f && mtnFactor < 0.15f)
+        {
+            int excess = surface - (SeaLevel + 3);
+            if (excess > 0)
+                surface -= (int)(excess * bankT * 0.75f); // slope bank down toward river
+        }
+
+        bool isRiver = riverBand > 0.95f && mtnFactor < 0.15f;
+        if (isRiver) surface = SeaLevel - 2;
+
+        return (surface, isRiver, mtnFactor);
+    }
+
+    // ── Chunk data generation ─────────────────────────────────────────────
+
+    void GenerateChunkData(int cx, int cz)
+    {
+        if (_chunkData.ContainsKey((cx, cz))) return;
+
+        var data = new byte[CW, Height, CD];
+        _chunkData[(cx, cz)] = data; // register before filling to prevent re-entry
+
+        int wx0 = cx * CW, wz0 = cz * CD;
+
+        // Per-chunk seeded RNG so tree/flower layout is deterministic per chunk
+        var rng = new System.Random(cx * 73856093 ^ cz * 19349663 ^ 42);
+
+        for (int lx = 0; lx < CW; lx++)
+        for (int lz = 0; lz < CD; lz++)
+        {
+            int wx = wx0 + lx, wz = wz0 + lz;
+            var (surface, isRiver, _) = ComputeColumn(wx, wz);
+
+            // Flat safe landing pad around the player spawn at (256, 24, 256)
+            if (wx >= 246 && wx <= 266 && wz >= 246 && wz <= 266)
+                { surface = SeaLevel; isRiver = false; }
+
+            // Fill solid terrain
+            for (int y = 0; y <= surface; y++)
+                data[lx, y, lz] = y == surface    ? (isRiver ? Sand : Grass)
+                                 : y > surface - 4 ? Dirt
+                                 :                   Stone;
+
+            // Fill river channel with water up to sea level
+            if (isRiver)
+                for (int y = surface + 1; y <= SeaLevel; y++)
+                    data[lx, y, lz] = Water;
+
+            // Trees and flowers — kept ≥2 blocks inset so leaf crowns stay in chunk
+            if (!isRiver && surface < Height - 9
+                && lx >= 2 && lx < CW - 2 && lz >= 2 && lz < CD - 2)
+            {
+                double roll = rng.NextDouble();
+                if (roll < 0.04)
+                    PlaceTreeLocal(data, lx, lz, surface);
+                else if (roll < 0.08 && surface + 1 < Height)
+                    data[lx, surface + 1, lz] = Flower;
+            }
+        }
+    }
+
+    // Trees are fully contained within the chunk (trunk ≥2 inset, crown ±2)
+    void PlaceTreeLocal(byte[,,] data, int lx, int lz, int sy)
+    {
+        int h = 4 + (lx * 3 + lz * 7) % 3; // 4, 5, or 6 — deterministic per position
+
+        for (int t = 1; t <= h && sy + t < Height; t++)
+            data[lx, sy + t, lz] = Wood;
+
+        int cy = sy + h;
+        for (int dlx = -2; dlx <= 2; dlx++)
+        for (int dly = -1; dly <= 2; dly++)
+        for (int dlz = -2; dlz <= 2; dlz++)
+        {
+            if (dlx == 0 && dlz == 0 && dly < 1) continue;
+            if (Mathf.Sqrt(dlx*dlx + dly*dly*0.6f + dlz*dlz) <= 2.1f)
+            {
+                int nx = lx + dlx, ny = cy + dly, nz = lz + dlz;
+                if ((uint)nx < CW && (uint)ny < Height && (uint)nz < CD
+                    && data[nx, ny, nz] == Air)
+                    data[nx, ny, nz] = Leaves;
+            }
+        }
+    }
+
+    // ── Structure placement ───────────────────────────────────────────────
+
+    void PlaceStructures()
+    {
+        SpawnPoints.Clear();
+
+        // Pre-generate chunks that structures touch (city + 4 platforms)
+        int[][] regions =
+        [
+            [50,  50,  120, 120], // Sunrise Peak area
+            [400, 50,  470, 120], // East Ridge area
+            [50,  400, 120, 470], // Forest Watch area
+            [400, 400, 470, 470], // Valley View area
+            [370, 370, 415, 415], // City area
+        ];
+        foreach (var r in regions)
+            for (int cx2 = FloorDiv(r[0], CW) - 1; cx2 <= FloorDiv(r[2], CW) + 1; cx2++)
+            for (int cz2 = FloorDiv(r[1], CD) - 1; cz2 <= FloorDiv(r[3], CD) + 1; cz2++)
+                GenerateChunkData(cx2, cz2);
+
+        // City
+        const int CX0 = 383, CZ0 = 383, CX1 = 406, CZ1 = 406;
+        int cityY = SurfaceAt(394, 394);
+        FlattenArea(CX0, CZ0, CX1, CZ1, cityY);
+        BuildCity(CX0, CZ0, CX1, CZ1, cityY);
+
+        // Platforms in each quadrant corner
+        BuildViewPlatform( 80,  80, "Sunrise Peak");
+        BuildViewPlatform(440,  80, "East Ridge");
+        BuildViewPlatform( 80, 440, "Forest Watch");
+        BuildViewPlatform(440, 440, "Valley View");
+    }
+
+    void FlattenArea(int wx0, int wz0, int wx1, int wz1, int targetY)
+    {
+        for (int wx = wx0; wx <= wx1; wx++)
+        for (int wz = wz0; wz <= wz1; wz++)
+        for (int y  = 0;   y  <  Height; y++)
+            SetWorldBlock(wx, y, wz, y < targetY ? Stone : y == targetY ? Dirt : Air);
+    }
+
+    void BuildViewPlatform(int cx, int cz, string name)
+    {
+        const int   FlatR  = 4;
+        const int   SlopeR = 10;
+        const float Rate   = 5f / (SlopeR - FlatR);
+
+        int groundY = SurfaceAt(cx, cz);
+        int topY    = groundY + 5;
+
+        for (int wx = cx - SlopeR; wx <= cx + SlopeR; wx++)
+        for (int wz = cz - SlopeR; wz <= cz + SlopeR; wz++)
+        {
+            float dist = Mathf.Sqrt((float)((wx-cx)*(wx-cx) + (wz-cz)*(wz-cz)));
+            if (dist > SlopeR) continue;
+
+            bool isTop = dist <= FlatR;
+            int  fillY = isTop
+                ? topY
+                : Mathf.Max(groundY, topY - (int)((dist - FlatR) * Rate));
+
+            for (int y = 0; y < Height; y++)
+                SetWorldBlock(wx, y, wz,
+                    y < fillY  ? Stone
+                  : y == fillY ? (isTop ? Plank : (dist < SlopeR - 2 ? Dirt : Grass))
+                  :              Air);
+        }
+
+        for (int d = -FlatR; d <= FlatR; d++)
+        {
+            SetWorldBlock(cx + d, topY + 1, cz - FlatR, Glass);
+            SetWorldBlock(cx + d, topY + 1, cz + FlatR, Glass);
+            SetWorldBlock(cx - FlatR, topY + 1, cz + d, Glass);
+            SetWorldBlock(cx + FlatR, topY + 1, cz + d, Glass);
+        }
+
+        SpawnPoints.Add((name, new Vector3(cx, topY + 1.5f, cz)));
+    }
+
+    int SurfaceAt(int wx, int wz)
+    {
+        int cx = FloorDiv(wx, CW), cz = FloorDiv(wz, CD);
+        if (!_chunkData.TryGetValue((cx, cz), out var data)) return SeaLevel;
+        int lx = wx - cx * CW, lz = wz - cz * CD;
+        for (int y = Height - 1; y >= 0; y--)
+            if (data[lx, y, lz] != Air) return y;
+        return 0;
+    }
+
+    void BuildCity(int x0, int z0, int x1, int z1, int groundY)
+    {
+        int midX = (x0 + x1) / 2, midZ = (z0 + z1) / 2;
+
+        for (int wx = x0; wx <= x1; wx++)
+        {
+            SetWorldBlock(wx, groundY, midZ - 1, Stone);
+            SetWorldBlock(wx, groundY, midZ,     Stone);
+            SetWorldBlock(wx, groundY, midZ + 1, Stone);
+        }
+        for (int wz = z0; wz <= z1; wz++)
+        {
+            SetWorldBlock(midX - 1, groundY, wz, Stone);
+            SetWorldBlock(midX,     groundY, wz, Stone);
+            SetWorldBlock(midX + 1, groundY, wz, Stone);
+        }
+
+        PlaceBuilding(x0 + 1, groundY, z0 + 1,  8, 7, 5, Brick);
+        PlaceBuilding(midX+3, groundY, z0 + 1,  7, 7, 8, Plank);
+        PlaceBuilding(x0 + 1, groundY, midZ + 3, 8, 7, 6, Brick);
+        PlaceBuilding(midX+3, groundY, midZ + 3, 7, 7, 9, Plank);
+
+        int[] lpX = { midX-6, midX+6, midX-6, midX+6 };
+        int[] lpZ = { midZ-6, midZ-6, midZ+6, midZ+6 };
+        for (int i = 0; i < 4; i++)
+        {
+            for (int y = 1; y <= 4; y++) SetWorldBlock(lpX[i], groundY + y, lpZ[i], Wood);
+            SetWorldBlock(lpX[i], groundY + 5, lpZ[i], Leaves);
+        }
+    }
+
+    void PlaceBuilding(int bx, int by, int bz, int w, int d, int h, byte wall)
+    {
+        for (int x = bx; x < bx + w; x++)
+        for (int z = bz; z < bz + d; z++)
+        {
+            bool onX = x == bx || x == bx + w - 1;
+            bool onZ = z == bz || z == bz + d - 1;
+            bool isCorner = onX && onZ;
+
+            SetWorldBlock(x, by + 1, z, Plank);
+
+            for (int y = by + 2; y <= by + h; y++)
+            {
+                if (y == by + h) { SetWorldBlock(x, y, z, wall); continue; }
+                if (!onX && !onZ) continue;
+                bool win = !isCorner
+                         && (y - by - 2) % 3 == 1
+                         && (onX ? (z - bz) % 3 == 1 : (x - bx) % 3 == 1);
+                SetWorldBlock(x, y, z, win ? Glass : wall);
+            }
+        }
+    }
+
+    // ── Block access ──────────────────────────────────────────────────────
+
+    public byte GetBlock(int wx, int wy, int wz)
+    {
+        if ((uint)wy >= Height) return Air;
+        int cx = FloorDiv(wx, CW), cz = FloorDiv(wz, CD);
+        if (!_chunkData.TryGetValue((cx, cz), out var data)) return Air;
+        return data[wx - cx * CW, wy, wz - cz * CD];
+    }
+
+    void SetWorldBlock(int wx, int wy, int wz, byte block)
+    {
+        if ((uint)wy >= Height) return;
+        int cx = FloorDiv(wx, CW), cz = FloorDiv(wz, CD);
+        if (!_chunkData.TryGetValue((cx, cz), out var data)) return;
+        data[wx - cx * CW, wy, wz - cz * CD] = block;
+    }
+
+    public void SetBlock(Vector3I pos, byte block)
+    {
+        SetWorldBlock(pos.X, pos.Y, pos.Z, block);
+
+        int cx = FloorDiv(pos.X, CW), cz = FloorDiv(pos.Z, CD);
+        RebuildChunkIfActive(cx, cz);
+
+        int lx = pos.X - cx * CW, lz = pos.Z - cz * CD;
+        if (lx == 0)      RebuildChunkIfActive(cx - 1, cz);
+        if (lx == CW - 1) RebuildChunkIfActive(cx + 1, cz);
+        if (lz == 0)      RebuildChunkIfActive(cx, cz - 1);
+        if (lz == CD - 1) RebuildChunkIfActive(cx, cz + 1);
+    }
+
+    static int FloorDiv(int a, int b)
+    {
+        int q = a / b;
+        return (a ^ b) < 0 && q * b != a ? q - 1 : q;
+    }
+
+    // ── Chunk streaming ───────────────────────────────────────────────────
 
     void UpdateChunks(int pcx, int pcz)
     {
-        int x0 = Mathf.Max(0, pcx - RenderDist);
-        int x1 = Mathf.Min(Width  / CW - 1, pcx + RenderDist);
-        int z0 = Mathf.Max(0, pcz - RenderDist);
-        int z1 = Mathf.Min(Depth  / CD - 1, pcz + RenderDist);
+        int x0 = pcx - RenderDist, x1 = pcx + RenderDist;
+        int z0 = pcz - RenderDist, z1 = pcz + RenderDist;
 
-        // Unload chunks that scrolled out of range
         var remove = new List<(int, int)>();
         foreach (var key in _active.Keys)
         {
@@ -118,7 +436,6 @@ public partial class VoxelWorld : Node3D
         }
         foreach (var k in remove) UnloadChunk(k.Item1, k.Item2);
 
-        // Load newly visible chunks
         for (int cx = x0; cx <= x1; cx++)
         for (int cz = z0; cz <= z1; cz++)
             if (!_active.ContainsKey((cx, cz)))
@@ -127,6 +444,12 @@ public partial class VoxelWorld : Node3D
 
     void LoadChunk(int cx, int cz)
     {
+        // Generate data for this chunk and all face-adjacent neighbors so boundary
+        // face culling sees correct blocks in every direction.
+        for (int dx = -1; dx <= 1; dx++)
+        for (int dz = -1; dz <= 1; dz++)
+            GenerateChunkData(cx + dx, cz + dz);
+
         var arrayMesh = BuildChunkMesh(cx, cz);
 
         var mesh = new MeshInstance3D { Mesh = arrayMesh };
@@ -141,12 +464,18 @@ public partial class VoxelWorld : Node3D
 
         if (arrayMesh.GetSurfaceCount() > 0)
         {
-            var triShape = arrayMesh.CreateTrimeshShape();
-            triShape.BackfaceCollision = true;
-            col.Shape = triShape;
+            var tri = arrayMesh.CreateTrimeshShape();
+            tri.BackfaceCollision = true;
+            col.Shape = tri;
         }
 
         _active[(cx, cz)] = new ChunkObjs { Mesh = mesh, Body = body, Col = col };
+
+        // Rebuild neighboring active chunks whose boundary faces may have changed
+        RebuildChunkIfActive(cx - 1, cz);
+        RebuildChunkIfActive(cx + 1, cz);
+        RebuildChunkIfActive(cx, cz - 1);
+        RebuildChunkIfActive(cx, cz + 1);
     }
 
     void UnloadChunk(int cx, int cz)
@@ -157,10 +486,24 @@ public partial class VoxelWorld : Node3D
         _active.Remove((cx, cz));
     }
 
+    void RebuildChunkIfActive(int cx, int cz)
+    {
+        if (!_active.TryGetValue((cx, cz), out var objs)) return;
+        var arrayMesh = BuildChunkMesh(cx, cz);
+        objs.Mesh.Mesh = arrayMesh;
+        if (arrayMesh.GetSurfaceCount() > 0)
+        {
+            var tri = arrayMesh.CreateTrimeshShape();
+            tri.BackfaceCollision = true;
+            objs.Col.Shape = tri;
+        }
+    }
+
+    // ── Mesh building ─────────────────────────────────────────────────────
+
     ArrayMesh BuildChunkMesh(int cx, int cz)
     {
-        int wx0 = cx * CW, wx1 = wx0 + CW;
-        int wz0 = cz * CD, wz1 = wz0 + CD;
+        int wx0 = cx * CW, wz0 = cz * CD;
 
         var verts = new List<Vector3>[MatCount];
         var uvs   = new List<Vector2>[MatCount];
@@ -168,23 +511,23 @@ public partial class VoxelWorld : Node3D
         var tris  = new List<int>[MatCount];
         for (int i = 0; i < MatCount; i++) { verts[i]=[]; uvs[i]=[]; norms[i]=[]; tris[i]=[]; }
 
-        for (int x = wx0; x < wx1;   x++)
-        for (int y = 0;   y < Height; y++)
-        for (int z = wz0; z < wz1;   z++)
+        for (int lx = 0; lx < CW;     lx++)
+        for (int y  = 0; y  < Height; y++)
+        for (int lz = 0; lz < CD;     lz++)
         {
-            byte block = _data[x, y, z];
+            byte block = GetBlock(wx0 + lx, y, wz0 + lz);
             if (block == Air) continue;
 
             foreach (var (dir, norm, quad) in Faces)
             {
-                byte nb = GetBlock(x + dir.X, y + dir.Y, z + dir.Z);
-                if (nb != Air && nb != Leaves && nb != Glass) continue;
+                byte nb = GetBlock(wx0 + lx + dir.X, y + dir.Y, wz0 + lz + dir.Z);
+                // Treat Water as transparent so river beds are visible through water
+                if (nb != Air && nb != Leaves && nb != Glass && nb != Water) continue;
                 if (nb == block) continue;
 
                 int m = FaceMat(block, dir.Y);
                 int b = verts[m].Count;
-
-                var origin = new Vector3(x, y, z);
+                var origin = new Vector3(wx0 + lx, y, wz0 + lz);
                 foreach (var c in quad) verts[m].Add(origin + c);
                 norms[m].AddRange([norm, norm, norm, norm]);
                 uvs[m].AddRange(QuadUVs);
@@ -196,19 +539,16 @@ public partial class VoxelWorld : Node3D
         for (int m = 0; m < MatCount; m++)
         {
             if (verts[m].Count == 0) continue;
-
             var arr = new Godot.Collections.Array();
             arr.Resize((int)Mesh.ArrayType.Max);
             arr[(int)Mesh.ArrayType.Vertex] = verts[m].ToArray();
             arr[(int)Mesh.ArrayType.Normal] = norms[m].ToArray();
             arr[(int)Mesh.ArrayType.TexUV]  = uvs[m].ToArray();
             arr[(int)Mesh.ArrayType.Index]  = tris[m].ToArray();
-
             int surf = arrayMesh.GetSurfaceCount();
             arrayMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arr);
             arrayMesh.SurfaceSetMaterial(surf, _mats[m]);
         }
-
         return arrayMesh;
     }
 
@@ -227,6 +567,7 @@ public partial class VoxelWorld : Node3D
         _mats[MatBrick]     = MakeCol(new Color(0.52f, 0.24f, 0.14f));
         _mats[MatPlank]     = MakeCol(new Color(0.72f, 0.58f, 0.35f));
         _mats[MatGlass]     = MakeCol(new Color(0.70f, 0.88f, 1.00f));
+        _mats[MatWater]     = MakeCol(new Color(0.22f, 0.52f, 0.82f));
     }
 
     static StandardMaterial3D MakeTex(string path) => new()
@@ -236,248 +577,6 @@ public partial class VoxelWorld : Node3D
     };
 
     static StandardMaterial3D MakeCol(Color c) => new() { AlbedoColor = c };
-
-    // ── Terrain generation ────────────────────────────────────────────────
-
-    void GenerateTerrain()
-    {
-        const int SeaLevel = 22;
-        SpawnPoints.Clear();
-
-        // Base terrain — low-frequency for large-scale hills
-        for (int x = 0; x < Width; x++)
-        for (int z = 0; z < Depth; z++)
-        {
-            float nx = x * 0.025f, nz = z * 0.025f;
-            float h = Mathf.Sin(nx)              * Mathf.Cos(nz)             * 10f
-                    + Mathf.Sin(nx * 2.5f + 0.7f) * Mathf.Cos(nz * 2.3f)    *  5f
-                    + Mathf.Sin(nx * 0.4f)         * Mathf.Cos(nz * 0.5f)    * 14f;
-            int surface = Mathf.Clamp(SeaLevel + Mathf.RoundToInt(h), 4, Height - 10);
-
-            // _data is zero-initialized (Air = 0); only write solid blocks
-            for (int y = 0; y <= surface; y++)
-            {
-                _data[x, y, z] = y == surface    ? Grass
-                                : y > surface - 4 ? Dirt
-                                :                   Stone;
-            }
-        }
-
-        // Flat safe landing zone around the player spawn point (256,256)
-        FlattenArea(246, 246, 266, 266, SeaLevel);
-
-        // City footprint — about 150 blocks east-northeast of spawn
-        const int CX0 = 380, CZ0 = 380, CX1 = 403, CZ1 = 403;
-        int cityY = SurfaceAt(391, 391);
-        FlattenArea(CX0, CZ0, CX1, CZ1, cityY);
-
-        // Platforms — one in each quadrant; built before trees so Plank decks block growth
-        BuildViewPlatform( 80,  80, "Sunrise Peak");
-        BuildViewPlatform(430,  80, "East Ridge");
-        BuildViewPlatform( 80, 430, "Forest Watch");
-        BuildViewPlatform(430, 430, "Valley View");
-
-        // Trees and flowers — skip spawn zone and city buffer
-        for (int x = 2; x < Width - 2; x++)
-        for (int z = 2; z < Depth - 2; z++)
-        {
-            if (x >= 242 && x <= 270 && z >= 242 && z <= 270) continue; // spawn area
-            if (x >= CX0 - 3 && x <= CX1 + 3 && z >= CZ0 - 3 && z <= CZ1 + 3) continue;
-
-            int sy = SurfaceAt(x, z);
-            if (_data[x, sy, z] != Grass) continue;
-
-            double roll = _rng.NextDouble();
-            if      (roll < 0.04) PlaceTree(x, sy, z);
-            else if (roll < 0.08) PlaceFlower(x, sy, z);
-        }
-
-        BuildCity(CX0, CZ0, CX1, CZ1, cityY);
-    }
-
-    void BuildViewPlatform(int cx, int cz, string name)
-    {
-        const int   FlatR  = 4;
-        const int   SlopeR = 10;
-        const float Rate   = 5f / (SlopeR - FlatR); // ~40° slope — walkable
-
-        int groundY = SurfaceAt(cx, cz);
-        int topY    = groundY + 5;
-
-        for (int x = cx - SlopeR; x <= cx + SlopeR; x++)
-        for (int z = cz - SlopeR; z <= cz + SlopeR; z++)
-        {
-            if ((uint)x >= Width || (uint)z >= Depth) continue;
-
-            float dist = Mathf.Sqrt((float)((x - cx) * (x - cx) + (z - cz) * (z - cz)));
-            if (dist > SlopeR) continue;
-
-            bool isTop = dist <= FlatR;
-            int  fillY = isTop
-                ? topY
-                : Mathf.Max(groundY, topY - (int)((dist - FlatR) * Rate));
-
-            for (int y = 0; y < Height; y++)
-                _data[x, y, z] =
-                    y < fillY  ? Stone
-                  : y == fillY ? (isTop ? Plank : (dist < SlopeR - 2 ? Dirt : Grass))
-                  :              Air;
-        }
-
-        // Glass railing around the flat deck perimeter
-        for (int d = -FlatR; d <= FlatR; d++)
-        {
-            Set(cx + d, topY + 1, cz - FlatR, Glass);
-            Set(cx + d, topY + 1, cz + FlatR, Glass);
-            Set(cx - FlatR, topY + 1, cz + d, Glass);
-            Set(cx + FlatR, topY + 1, cz + d, Glass);
-        }
-
-        SpawnPoints.Add((name, new Vector3(cx, topY + 1.5f, cz)));
-    }
-
-    int SurfaceAt(int x, int z)
-    {
-        if ((uint)x >= Width || (uint)z >= Depth) return 0;
-        for (int y = Height - 1; y >= 0; y--)
-            if (_data[x, y, z] != Air) return y;
-        return 0;
-    }
-
-    void FlattenArea(int x0, int z0, int x1, int z1, int targetY)
-    {
-        for (int x = x0; x <= x1; x++)
-        for (int z = z0; z <= z1; z++)
-        for (int y = 0;  y < Height; y++)
-        {
-            _data[x, y, z] = y < targetY ? Stone : y == targetY ? Dirt : Air;
-        }
-    }
-
-    void PlaceTree(int x, int sy, int z)
-    {
-        int h = _rng.Next(4, 7);
-        for (int t = 1; t <= h; t++)
-            Set(x, sy + t, z, Wood);
-
-        int cy = sy + h;
-        for (int lx = -2; lx <= 2; lx++)
-        for (int ly = -1; ly <= 2; ly++)
-        for (int lz = -2; lz <= 2; lz++)
-        {
-            if (lx == 0 && lz == 0 && ly < 1) continue;
-            if (Mathf.Sqrt(lx*lx + ly*ly*0.6f + lz*lz) <= 2.1f)
-                Set(x + lx, cy + ly, z + lz, Leaves);
-        }
-    }
-
-    void PlaceFlower(int x, int sy, int z) => Set(x, sy + 1, z, Flower);
-
-    void BuildCity(int x0, int z0, int x1, int z1, int groundY)
-    {
-        int midX = (x0 + x1) / 2;
-        int midZ = (z0 + z1) / 2;
-
-        for (int x = x0; x <= x1; x++)
-        {
-            Set(x, groundY, midZ - 1, Stone);
-            Set(x, groundY, midZ,     Stone);
-            Set(x, groundY, midZ + 1, Stone);
-        }
-        for (int z = z0; z <= z1; z++)
-        {
-            Set(midX - 1, groundY, z, Stone);
-            Set(midX,     groundY, z, Stone);
-            Set(midX + 1, groundY, z, Stone);
-        }
-
-        PlaceBuilding(x0 + 1, groundY, z0 + 1,  8, 7, 5, Brick);
-        PlaceBuilding(midX+3, groundY, z0 + 1,  7, 7, 8, Plank);
-        PlaceBuilding(x0 + 1, groundY, midZ + 3, 8, 7, 6, Brick);
-        PlaceBuilding(midX+3, groundY, midZ + 3, 7, 7, 9, Plank);
-
-        int[] lpX = { midX - 6, midX + 6, midX - 6, midX + 6 };
-        int[] lpZ = { midZ - 6, midZ - 6, midZ + 6, midZ + 6 };
-        for (int i = 0; i < 4; i++)
-        {
-            for (int y = 1; y <= 4; y++) Set(lpX[i], groundY + y, lpZ[i], Wood);
-            Set(lpX[i], groundY + 5, lpZ[i], Leaves);
-        }
-    }
-
-    void PlaceBuilding(int bx, int by, int bz, int w, int d, int h, byte wall)
-    {
-        for (int x = bx; x < bx + w; x++)
-        for (int z = bz; z < bz + d; z++)
-        {
-            bool onX      = x == bx || x == bx + w - 1;
-            bool onZ      = z == bz || z == bz + d - 1;
-            bool isWall   = onX || onZ;
-            bool isCorner = onX && onZ;
-
-            Set(x, by + 1, z, Plank);
-
-            for (int y = by + 2; y <= by + h; y++)
-            {
-                if (y == by + h)
-                {
-                    Set(x, y, z, wall);
-                }
-                else if (isWall)
-                {
-                    bool win = !isCorner
-                             && (y - by - 2) % 3 == 1
-                             && (onX ? (z - bz) % 3 == 1 : (x - bx) % 3 == 1);
-                    Set(x, y, z, win ? Glass : wall);
-                }
-            }
-        }
-    }
-
-    void Set(int x, int y, int z, byte block)
-    {
-        if ((uint)x < Width && (uint)y < Height && (uint)z < Depth)
-            _data[x, y, z] = block;
-    }
-
-    // ── Public API ────────────────────────────────────────────────────────
-
-    public byte GetBlock(int x, int y, int z)
-    {
-        if ((uint)x >= Width || (uint)y >= Height || (uint)z >= Depth) return Air;
-        return _data[x, y, z];
-    }
-
-    public void SetBlock(Vector3I pos, byte block)
-    {
-        if ((uint)pos.X >= Width || (uint)pos.Y >= Height || (uint)pos.Z >= Depth) return;
-        _data[pos.X, pos.Y, pos.Z] = block;
-
-        int cx = pos.X / CW;
-        int cz = pos.Z / CD;
-        RebuildChunkIfActive(cx, cz);
-
-        // Rebuild adjacent chunks when the block is on a boundary
-        if (pos.X % CW == 0        && cx > 0)           RebuildChunkIfActive(cx - 1, cz);
-        if (pos.X % CW == CW - 1   && cx < Width/CW-1)  RebuildChunkIfActive(cx + 1, cz);
-        if (pos.Z % CD == 0        && cz > 0)           RebuildChunkIfActive(cx, cz - 1);
-        if (pos.Z % CD == CD - 1   && cz < Depth/CD-1)  RebuildChunkIfActive(cx, cz + 1);
-    }
-
-    void RebuildChunkIfActive(int cx, int cz)
-    {
-        if (!_active.TryGetValue((cx, cz), out var objs)) return;
-
-        var arrayMesh = BuildChunkMesh(cx, cz);
-        objs.Mesh.Mesh = arrayMesh;
-
-        if (arrayMesh.GetSurfaceCount() > 0)
-        {
-            var triShape = arrayMesh.CreateTrimeshShape();
-            triShape.BackfaceCollision = true;
-            objs.Col.Shape = triShape;
-        }
-    }
 
     static int FaceMat(byte block, int dirY) => block switch
     {
@@ -491,6 +590,7 @@ public partial class VoxelWorld : Node3D
         Brick  => MatBrick,
         Plank  => MatPlank,
         Glass  => MatGlass,
+        Water  => MatWater,
         _      => MatDirt,
     };
 }
