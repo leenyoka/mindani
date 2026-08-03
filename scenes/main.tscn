@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://main"]
+[gd_scene load_steps=14 format=3 uid="uid://main"]
 
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="1"]
 [ext_resource type="Script" path="res://scripts/World/VoxelWorld.cs" id="2"]
@@ -8,6 +8,8 @@
 [ext_resource type="Script" path="res://scripts/UI/PauseMenu.cs" id="6"]
 [ext_resource type="Script" path="res://scripts/UI/SpawnSelector.cs" id="7"]
 [ext_resource type="Script" path="res://scripts/World/DayNightCycle.cs" id="8"]
+[ext_resource type="Script" path="res://scripts/UI/TouchControls.cs" id="9"]
+[ext_resource type="Script" path="res://scripts/World/FriendSpawner.cs" id="10"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_1"]
 sky_top_color = Color(0.18, 0.5, 0.92, 1)
@@ -68,55 +70,9 @@ AnimalKind = "Sheep"
 position = Vector3(258, 85, 268)
 AnimalKind = "Sheep"
 
-[node name="Caleb" parent="." instance=ExtResource("4")]
-position = Vector3(310, 85, 290)
-CompanionName = "Caleb"
-BodyColor = Color(0.1, 0.35, 0.85, 1)
-Dialogue = PackedStringArray("Whoa, look how far we can see!", "I bet there's treasure over that hill!", "Race you to that big tree!", "This is so cool!", "I've never been this far before!")
-VoicePitch = 1.5
-VoiceRate = 1.1
-
-[node name="Conner" parent="." instance=ExtResource("4")]
-position = Vector3(290, 85, 315)
-CompanionName = "Conner"
-BodyColor = Color(0.15, 0.60, 0.25, 1)
-Dialogue = PackedStringArray("I'm gonna build the biggest castle ever!", "We need more rocks!", "Can we dig a hole here?", "My castle is gonna have a moat!", "I found a flat spot, let's build!")
-VoicePitch = 1.4
-VoiceRate = 1.0
-
-[node name="Milani" parent="." instance=ExtResource("4")]
-position = Vector3(330, 85, 278)
-CompanionName = "Milani"
-BodyColor = Color(0.55, 0.15, 0.80, 1)
-Dialogue = PackedStringArray("Look, a flower!", "Shh, there's an animal over there!", "The trees are so tall!", "Can we keep one of the chickens?", "I like the pretty colours!")
-VoicePitch = 1.45
-VoiceRate = 1.05
-
-[node name="Xyan" parent="." instance=ExtResource("4")]
-position = Vector3(278, 85, 330)
-CompanionName = "Xyan"
-BodyColor = Color(0.95, 0.45, 0.10, 1)
-Dialogue = PackedStringArray("Woohoo, let's go!", "I can run really fast, watch!", "Last one there is a rotten egg!", "I'm not even tired yet!", "Come on, let's go faster!")
-VoicePitch = 1.5
-VoiceRate = 1.3
-
-[node name="Amarra" parent="." instance=ExtResource("4")]
-position = Vector3(350, 85, 340)
-CompanionName = "Amarra"
-BodyColor = Color(0.85, 0.20, 0.55, 1)
-Dialogue = PackedStringArray("Everything is so pretty here!", "Look at the colours in the sky!", "It looks like a painting!", "This is the most beautiful place ever!", "I want to remember this forever!")
-FemaleVoice = true
-VoicePitch = 1.55
-VoiceRate = 1.1
-
-[node name="Azalia" parent="." instance=ExtResource("4")]
-position = Vector3(215, 85, 270)
-CompanionName = "Azalia"
-BodyColor = Color(0.10, 0.70, 0.65, 1)
-Dialogue = PackedStringArray("Why is the grass that colour?", "I wonder what's underground!", "How do the trees grow so tall?", "Look, the dirt changes colour here!", "I want to know everything about this place!")
-FemaleVoice = true
-VoicePitch = 1.5
-VoiceRate = 1.0
+[node name="FriendSpawner" type="Node" parent="."]
+script = ExtResource("10")
+CompanionScene = ExtResource("4")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
@@ -139,10 +95,10 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -160
-offset_top = -60
-offset_right = 160
-offset_bottom = -10
+offset_left = -340
+offset_top = -78
+offset_right = 340
+offset_bottom = -6
 script = ExtResource("3")
 
 [node name="PauseMenu" type="CanvasLayer" parent="."]
@@ -155,3 +111,9 @@ script = ExtResource("7")
 
 [node name="DayNightCycle" type="Node" parent="."]
 script = ExtResource("8")
+
+[node name="TouchLayer" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="TouchControls" type="Control" parent="TouchLayer"]
+script = ExtResource("9")

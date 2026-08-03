@@ -3,40 +3,44 @@ using Mindani.Player;
 
 namespace Mindani.UI;
 
+// Hidden block-selection manager — no visual bar.
+// PauseMenu's block picker calls SelectBlock(); keyboard/scroll still works on desktop.
 public partial class Hotbar : HBoxContainer
 {
+    public static Hotbar? Instance { get; private set; }
+
     [Export] public BlockInteraction? Interaction;
 
-    static readonly (int id, string name, Color colour)[] Slots =
+    public static readonly (int id, string name, Color colour)[] AllBlocks =
     [
-        (1, "Grass",  new Color(0.3f, 0.7f, 0.2f)),
-        (2, "Dirt",   new Color(0.5f, 0.35f, 0.1f)),
-        (3, "Stone",  new Color(0.55f, 0.55f, 0.55f)),
-        (4, "Sand",   new Color(0.9f, 0.85f, 0.5f)),
+        ( 1, "Grass",  new Color(0.30f, 0.70f, 0.20f)),
+        ( 5, "Wood",   new Color(0.38f, 0.24f, 0.10f)),
+        ( 6, "Leaves", new Color(0.15f, 0.52f, 0.10f)),
+        ( 7, "Flower", new Color(1.00f, 0.25f, 0.40f)),
+        ( 8, "Brick",  new Color(0.52f, 0.24f, 0.14f)),
+        ( 9, "Plank",  new Color(0.72f, 0.58f, 0.35f)),
+        (10, "Glass",  new Color(0.70f, 0.88f, 1.00f)),
     ];
 
     int _selected = 0;
 
     public override void _Ready()
     {
-        foreach (var (_, name, colour) in Slots)
-        {
-            var panel = new PanelContainer();
-            var label = new Label { Text = name, HorizontalAlignment = HorizontalAlignment.Center };
-            panel.AddChild(label);
-            AddChild(panel);
-            panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat { BgColor = colour });
-        }
+        Instance = this;
+        Visible  = false;
 
         if (Interaction == null)
-        {
             foreach (var node in GetTree().GetNodesInGroup("block_interaction"))
-            {
                 if (node is BlockInteraction bi) { Interaction = bi; break; }
-            }
-        }
 
-        UpdateSelection();
+        SelectBlock(0);
+    }
+
+    public void SelectBlock(int idx)
+    {
+        _selected = idx;
+        if (Interaction != null)
+            Interaction.SelectedBlockId = AllBlocks[idx].id;
     }
 
     public override void _Input(InputEvent e)
@@ -44,28 +48,14 @@ public partial class Hotbar : HBoxContainer
         if (e is InputEventKey { Pressed: true } key)
         {
             int slot = (int)key.Keycode - (int)Key.Key1;
-            if (slot >= 0 && slot < Slots.Length) { _selected = slot; UpdateSelection(); }
+            if (slot >= 0 && slot < AllBlocks.Length) SelectBlock(slot);
         }
-
-        if (e is InputEventMouseButton { Pressed: true } mouse)
+        if (e is InputEventMouseButton { Pressed: true } mb)
         {
-            if (mouse.ButtonIndex == MouseButton.WheelUp)
-                { _selected = (_selected - 1 + Slots.Length) % Slots.Length; UpdateSelection(); }
-            if (mouse.ButtonIndex == MouseButton.WheelDown)
-                { _selected = (_selected + 1) % Slots.Length; UpdateSelection(); }
-        }
-    }
-
-    void UpdateSelection()
-    {
-        if (Interaction != null)
-            Interaction.SelectedBlockId = Slots[_selected].id;
-
-        for (int i = 0; i < GetChildCount(); i++)
-        {
-            var style = (StyleBoxFlat)GetChild<PanelContainer>(i).GetThemeStylebox("panel");
-            style.SetBorderWidthAll(i == _selected ? 3 : 0);
-            style.BorderColor = Colors.White;
+            if (mb.ButtonIndex == MouseButton.WheelUp)
+                SelectBlock((_selected - 1 + AllBlocks.Length) % AllBlocks.Length);
+            if (mb.ButtonIndex == MouseButton.WheelDown)
+                SelectBlock((_selected + 1) % AllBlocks.Length);
         }
     }
 }

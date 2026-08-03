@@ -1,4 +1,5 @@
 using Godot;
+using Mindani;
 
 namespace Mindani.World;
 
@@ -27,6 +28,7 @@ public partial class DayNightCycle : Node
 
     public override void _Ready()
     {
+        GameSettings.Load();
         _sun = GetNodeOrNull<DirectionalLight3D>("/root/Main/DirectionalLight3D");
 
         var worldEnv = GetNodeOrNull<WorldEnvironment>("/root/Main/WorldEnvironment");
@@ -39,7 +41,10 @@ public partial class DayNightCycle : Node
 
     public override void _Process(double delta)
     {
-        _time = (_time + (float)delta / DayDuration) % 1.0f;
+        if (GameSettings.AlwaysDaytime)
+            _time = 0.50f; // lock to noon
+        else
+            _time = (_time + (float)delta / DayDuration) % 1.0f;
 
         // sunHeight: +1 at noon, 0 at sunrise/sunset, -1 at midnight
         float sunHeight = Mathf.Sin((_time - 0.25f) * Mathf.Tau);

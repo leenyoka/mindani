@@ -13,18 +13,19 @@ public partial class VoxelWorld : Node3D
     const int RenderDist =  3;        // 7×7 = 49 active chunks
 
     // ── Block IDs ─────────────────────────────────────────────────────────
-    public const byte Air    = 0;
-    public const byte Grass  = 1;
-    public const byte Dirt   = 2;
-    public const byte Stone  = 3;
-    public const byte Sand   = 4;
-    public const byte Wood   = 5;
-    public const byte Leaves = 6;
-    public const byte Flower = 7;
-    public const byte Brick  = 8;
-    public const byte Plank  = 9;
-    public const byte Glass  = 10;
-    public const byte Water  = 11;
+    public const byte Air     = 0;
+    public const byte Grass   = 1;
+    public const byte Dirt    = 2;
+    public const byte Stone   = 3;
+    public const byte Sand    = 4;
+    public const byte Wood    = 5;
+    public const byte Leaves  = 6;
+    public const byte Flower  = 7;
+    public const byte Brick   = 8;
+    public const byte Plank   = 9;
+    public const byte Glass   = 10;
+    public const byte Water   = 11;
+    public const byte Bedrock = 12;
 
     // ── Material indices ──────────────────────────────────────────────────
     const int MatGrassTop  = 0;
@@ -39,7 +40,8 @@ public partial class VoxelWorld : Node3D
     const int MatPlank     = 9;
     const int MatGlass     = 10;
     const int MatWater     = 11;
-    const int MatCount     = 12;
+    const int MatBedrock   = 12;
+    const int MatCount     = 13;
 
     // ── Chunk system ──────────────────────────────────────────────────────
     // Data lives forever once generated; meshes are streamed in/out by distance.
@@ -57,8 +59,7 @@ public partial class VoxelWorld : Node3D
     readonly StandardMaterial3D[] _mats = new StandardMaterial3D[MatCount];
     public static readonly List<(string Name, Vector3 Position)> SpawnPoints = new();
 
-    // Pre-allocated mesh buffers — cleared and reused each BuildChunkMesh call
-    // to avoid allocating 48 Lists on every chunk build.
+    // Pre-allocated mesh buffers — cleared and reused each BuildChunkMesh call.
     readonly List<Vector3>[] _bVerts = new List<Vector3>[MatCount];
     readonly List<Vector2>[] _bUVs   = new List<Vector2>[MatCount];
     readonly List<Vector3>[] _bNorms = new List<Vector3>[MatCount];
@@ -215,9 +216,10 @@ public partial class VoxelWorld : Node3D
             if (wx >= 246 && wx <= 266 && wz >= 246 && wz <= 266)
                 { surface = SeaLevel; isRiver = false; }
 
-            // Fill solid terrain
+            // Fill solid terrain; y=0 is always indestructible bedrock
             for (int y = 0; y <= surface; y++)
-                data[lx, y, lz] = y == surface    ? (isRiver ? Sand : Grass)
+                data[lx, y, lz] = y == 0          ? Bedrock
+                                 : y == surface    ? (isRiver ? Sand : Grass)
                                  : y > surface - 4 ? Dirt
                                  :                   Stone;
 
@@ -483,7 +485,7 @@ public partial class VoxelWorld : Node3D
         for (int dz = -1; dz <= 1; dz++)
             GenerateChunkData(cx + dx, cz + dz);
 
-        var arrayMesh = BuildChunkMesh(cx, cz);
+        var (arrayMesh, colMesh) = BuildChunkMesh(cx, cz);
 
         var mesh = new MeshInstance3D { Mesh = arrayMesh };
         AddChild(mesh);
@@ -495,10 +497,8 @@ public partial class VoxelWorld : Node3D
         var col = new CollisionShape3D();
         body.AddChild(col);
 
-        if (arrayMesh.GetSurfaceCount() > 0)
-        {
-            col.Shape = arrayMesh.CreateTrimeshShape();
-        }
+        if (colMesh.GetSurfaceCount() > 0)
+            col.Shape = colMesh.CreateTrimeshShape();
 
         _active[(cx, cz)] = new ChunkObjs { Mesh = mesh, Body = body, Col = col };
 
@@ -520,11 +520,11 @@ public partial class VoxelWorld : Node3D
     void RebuildChunkIfActive(int cx, int cz)
     {
         if (!_active.TryGetValue((cx, cz), out var objs)) return;
-        var arrayMesh = BuildChunkMesh(cx, cz);
+        var (arrayMesh, colMesh) = BuildChunkMesh(cx, cz);
         objs.Mesh.Mesh = arrayMesh;
-        if (arrayMesh.GetSurfaceCount() > 0)
+        if (colMesh.GetSurfaceCount() > 0)
         {
-            var tri = arrayMesh.CreateTrimeshShape();
+            var tri = colMesh.CreateTrimeshShape();
             tri.BackfaceCollision = true;
             objs.Col.Shape = tri;
         }
@@ -532,7 +532,9 @@ public partial class VoxelWorld : Node3D
 
     // ── Mesh building ─────────────────────────────────────────────────────
 
-    ArrayMesh BuildChunkMesh(int cx, int cz)
+    // Returns (renderMesh, collisionMesh). The collision mesh excludes water and
+    // flowers so the player cannot stand on water surfaces.
+    (ArrayMesh, ArrayMesh) BuildChunkMesh(int cx, int cz)
     {
         int wx0 = cx * CW, wz0 = cz * CD;
 
@@ -564,6 +566,10 @@ public partial class VoxelWorld : Node3D
             _bNorms[i].Clear(); _bTris[i].Clear();
         }
 
+        // Separate collision buffers (solid blocks only — no water, no flowers).
+        var colVerts = new List<Vector3>(4096);
+        var colTris  = new List<int>(8192);
+
         for (int lx = 0; lx < CW;     lx++)
         for (int y  = 0; y  < Height; y++)
         for (int lz = 0; lz < CD;     lz++)
@@ -574,16 +580,29 @@ public partial class VoxelWorld : Node3D
             foreach (var (dir, norm, quad) in Faces)
             {
                 byte nb = FastGet(lx + dir.X, y + dir.Y, lz + dir.Z);
-                if (nb != Air && nb != Leaves && nb != Glass && nb != Water) continue;
-                if (nb == block) continue;
 
-                int m = FaceMat(block, dir.Y);
-                int b = _bVerts[m].Count;
+                bool renderFace    = (nb == Air || nb == Leaves || nb == Glass || nb == Water) && nb != block;
+                bool collisionFace = HasCollision(block) && !HasCollision(nb);
+                if (!renderFace && !collisionFace) continue;
+
                 var origin = new Vector3(wx0 + lx, y, wz0 + lz);
-                foreach (var c in quad) _bVerts[m].Add(origin + c);
-                _bNorms[m].AddRange([norm, norm, norm, norm]);
-                _bUVs[m].AddRange(QuadUVs);
-                _bTris[m].AddRange([b, b+1, b+2, b, b+2, b+3]);
+
+                if (renderFace)
+                {
+                    int m = FaceMat(block, dir.Y);
+                    int b = _bVerts[m].Count;
+                    foreach (var c in quad) _bVerts[m].Add(origin + c);
+                    _bNorms[m].AddRange([norm, norm, norm, norm]);
+                    _bUVs[m].AddRange(QuadUVs);
+                    _bTris[m].AddRange([b, b+1, b+2, b, b+2, b+3]);
+                }
+
+                if (collisionFace)
+                {
+                    int cb = colVerts.Count;
+                    foreach (var c in quad) colVerts.Add(origin + c);
+                    colTris.AddRange([cb, cb+1, cb+2, cb, cb+2, cb+3]);
+                }
             }
         }
 
@@ -601,8 +620,22 @@ public partial class VoxelWorld : Node3D
             arrayMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arr);
             arrayMesh.SurfaceSetMaterial(surf, _mats[m]);
         }
-        return arrayMesh;
+
+        var colMesh = new ArrayMesh();
+        if (colVerts.Count > 0)
+        {
+            var colArr = new Godot.Collections.Array();
+            colArr.Resize((int)Mesh.ArrayType.Max);
+            colArr[(int)Mesh.ArrayType.Vertex] = colVerts.ToArray();
+            colArr[(int)Mesh.ArrayType.Index]  = colTris.ToArray();
+            colMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, colArr);
+        }
+
+        return (arrayMesh, colMesh);
     }
+
+    // Water and flowers have no physical collision; everything else does.
+    static bool HasCollision(byte b) => b != Air && b != Water && b != Flower;
 
     // ── Materials ─────────────────────────────────────────────────────────
 
@@ -620,6 +653,7 @@ public partial class VoxelWorld : Node3D
         _mats[MatPlank]     = MakeCol(new Color(0.72f, 0.58f, 0.35f));
         _mats[MatGlass]     = MakeCol(new Color(0.70f, 0.88f, 1.00f));
         _mats[MatWater]     = MakeCol(new Color(0.22f, 0.52f, 0.82f));
+        _mats[MatBedrock]   = MakeCol(new Color(0.18f, 0.18f, 0.20f));
     }
 
     static StandardMaterial3D MakeTex(string path) => new()
@@ -642,7 +676,8 @@ public partial class VoxelWorld : Node3D
         Brick  => MatBrick,
         Plank  => MatPlank,
         Glass  => MatGlass,
-        Water  => MatWater,
-        _      => MatDirt,
+        Water   => MatWater,
+        Bedrock => MatBedrock,
+        _       => MatDirt,
     };
 }

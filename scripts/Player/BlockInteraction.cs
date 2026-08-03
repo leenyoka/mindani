@@ -32,7 +32,8 @@ public partial class BlockInteraction : Node
         if (e.IsActionPressed("break_block"))
         {
             var blockPos = (Vector3I)(hitPos - hitNormal * 0.5f).Floor();
-            _world.SetBlock(blockPos, VoxelWorld.Air);
+            if (_world.GetBlock(blockPos.X, blockPos.Y, blockPos.Z) != VoxelWorld.Bedrock)
+                _world.SetBlock(blockPos, VoxelWorld.Air);
         }
 
         if (e.IsActionPressed("place_block"))
